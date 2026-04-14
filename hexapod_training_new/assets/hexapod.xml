@@ -1,0 +1,207 @@
+<mujoco model="hexapod">
+  <compiler angle="degree" meshdir="meshes"/>
+
+  <visual>
+    <global offwidth="1280" offheight="960"/>
+    <quality shadowsize="4096"/>
+  </visual>
+
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="RK4">
+    <flag warmstart="enable"/>
+  </option>
+
+  <default>
+    <joint limited="true" damping="0.5" armature="0.01"/>
+    <geom contype="1" conaffinity="1" friction="1.0 0.005 0.0001" rgba="0.8 0.8 0.8 1"/>
+    <!-- Higher torque authority for PD control -->
+    <motor ctrllimited="true" ctrlrange="-2 2" gear="5"/>
+  </default>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.1 0.2 0.3" rgb2="0.2 0.3 0.4" width="512" height="512"/>
+    <material name="grid_mat" texture="grid" texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <!-- Higher friction for better grip (slide, spin, roll) -->
+    <geom name="floor" type="plane" size="10 10 0.1" material="grid_mat" conaffinity="1" contype="1" friction="1.5 0.01 0.001"/>
+    <light name="light" pos="0 0 5" dir="0 0 -1" diffuse="1 1 1"/>
+
+    <!-- Chassis: double plate + gap; hip yaw at z=0 between plates (vertical servo axis) -->
+    <body name="torso" pos="0 0 0.115">
+      <freejoint name="root"/>
+      <geom name="chassis_bottom" type="box" pos="0 0 -0.0135" size="0.07 0.04 0.0025" rgba="0.90 0.90 0.92 1" mass="0.11"/>
+      <geom name="chassis_top" type="box" pos="0 0 0.0135" size="0.07 0.04 0.0025" rgba="0.88 0.88 0.91 1" mass="0.10"/>
+      <geom name="chassis_electronics" type="box" pos="0 0 0" size="0.048 0.028 0.009" rgba="0.12 0.42 0.22 1" contype="0" conaffinity="0" mass="0.09"/>
+      <site name="imu_site" pos="0 0 0" size="0.01"/>
+
+      <!-- Leg 1: Front-Right (hip yaw Z, knee pitch Y) -->
+      <body name="leg1_hip" pos="0.056 -0.044 0" euler="0 0 -30">
+        <joint name="leg1_abduction" type="hinge" axis="0 0 1" range="-45 45" ref="0"/>
+        <geom name="leg1_hip_geom" type="box" pos="0.018 0 0" size="0.014 0.012 0.011" rgba="0.18 0.42 0.88 1" mass="0.011"/>
+        <body name="leg1_knee" pos="0.038 0 0" euler="0 22 0">
+          <joint name="leg1_flexion" type="hinge" axis="0 1 0" range="-90 90" ref="0"/>
+          <geom name="leg1_knee_servo" type="box" pos="0.014 0 0" size="0.011 0.010 0.009" rgba="0.16 0.40 0.85 1" mass="0.008"/>
+          <geom name="leg1_leg_geom" type="capsule" fromto="0 0 0 0.095 0 -0.078" size="0.0095" rgba="0.92 0.88 0.86 1" mass="0.022"/>
+          <body name="leg1_foot" pos="0.095 0 -0.078">
+            <geom name="leg1_foot_geom" type="sphere" size="0.0115" rgba="0.06 0.06 0.06 1" mass="0.006" friction="1.2 0.015 0.002"/>
+            <site name="leg1_contact" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Leg 2: Front-Left -->
+      <body name="leg2_hip" pos="0.056 0.044 0" euler="0 0 30">
+        <joint name="leg2_abduction" type="hinge" axis="0 0 1" range="-45 45" ref="0"/>
+        <geom name="leg2_hip_geom" type="box" pos="0.018 0 0" size="0.014 0.012 0.011" rgba="0.18 0.42 0.88 1" mass="0.011"/>
+        <body name="leg2_knee" pos="0.038 0 0" euler="0 22 0">
+          <joint name="leg2_flexion" type="hinge" axis="0 1 0" range="-90 90" ref="0"/>
+          <geom name="leg2_knee_servo" type="box" pos="0.014 0 0" size="0.011 0.010 0.009" rgba="0.16 0.40 0.85 1" mass="0.008"/>
+          <geom name="leg2_leg_geom" type="capsule" fromto="0 0 0 0.095 0 -0.078" size="0.0095" rgba="0.88 0.92 0.88 1" mass="0.022"/>
+          <body name="leg2_foot" pos="0.095 0 -0.078">
+            <geom name="leg2_foot_geom" type="sphere" size="0.0115" rgba="0.06 0.06 0.06 1" mass="0.006" friction="1.2 0.015 0.002"/>
+            <site name="leg2_contact" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Leg 3: Middle-Right -->
+      <body name="leg3_hip" pos="0 -0.054 0" euler="0 0 -90">
+        <joint name="leg3_abduction" type="hinge" axis="0 0 1" range="-45 45" ref="0"/>
+        <geom name="leg3_hip_geom" type="box" pos="0.018 0 0" size="0.014 0.012 0.011" rgba="0.18 0.42 0.88 1" mass="0.011"/>
+        <body name="leg3_knee" pos="0.038 0 0" euler="0 22 0">
+          <joint name="leg3_flexion" type="hinge" axis="0 1 0" range="-90 90" ref="0"/>
+          <geom name="leg3_knee_servo" type="box" pos="0.014 0 0" size="0.011 0.010 0.009" rgba="0.16 0.40 0.85 1" mass="0.008"/>
+          <geom name="leg3_leg_geom" type="capsule" fromto="0 0 0 0.095 0 -0.078" size="0.0095" rgba="0.92 0.88 0.86 1" mass="0.022"/>
+          <body name="leg3_foot" pos="0.095 0 -0.078">
+            <geom name="leg3_foot_geom" type="sphere" size="0.0115" rgba="0.06 0.06 0.06 1" mass="0.006" friction="1.2 0.015 0.002"/>
+            <site name="leg3_contact" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Leg 4: Middle-Left -->
+      <body name="leg4_hip" pos="0 0.054 0" euler="0 0 90">
+        <joint name="leg4_abduction" type="hinge" axis="0 0 1" range="-45 45" ref="0"/>
+        <geom name="leg4_hip_geom" type="box" pos="0.018 0 0" size="0.014 0.012 0.011" rgba="0.18 0.42 0.88 1" mass="0.011"/>
+        <body name="leg4_knee" pos="0.038 0 0" euler="0 22 0">
+          <joint name="leg4_flexion" type="hinge" axis="0 1 0" range="-90 90" ref="0"/>
+          <geom name="leg4_knee_servo" type="box" pos="0.014 0 0" size="0.011 0.010 0.009" rgba="0.16 0.40 0.85 1" mass="0.008"/>
+          <geom name="leg4_leg_geom" type="capsule" fromto="0 0 0 0.095 0 -0.078" size="0.0095" rgba="0.88 0.92 0.88 1" mass="0.022"/>
+          <body name="leg4_foot" pos="0.095 0 -0.078">
+            <geom name="leg4_foot_geom" type="sphere" size="0.0115" rgba="0.06 0.06 0.06 1" mass="0.006" friction="1.2 0.015 0.002"/>
+            <site name="leg4_contact" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Leg 5: Back-Right -->
+      <body name="leg5_hip" pos="-0.056 -0.044 0" euler="0 0 -150">
+        <joint name="leg5_abduction" type="hinge" axis="0 0 1" range="-45 45" ref="0"/>
+        <geom name="leg5_hip_geom" type="box" pos="0.018 0 0" size="0.014 0.012 0.011" rgba="0.18 0.42 0.88 1" mass="0.011"/>
+        <body name="leg5_knee" pos="0.038 0 0" euler="0 22 0">
+          <joint name="leg5_flexion" type="hinge" axis="0 1 0" range="-90 90" ref="0"/>
+          <geom name="leg5_knee_servo" type="box" pos="0.014 0 0" size="0.011 0.010 0.009" rgba="0.16 0.40 0.85 1" mass="0.008"/>
+          <geom name="leg5_leg_geom" type="capsule" fromto="0 0 0 0.095 0 -0.078" size="0.0095" rgba="0.92 0.88 0.86 1" mass="0.022"/>
+          <body name="leg5_foot" pos="0.095 0 -0.078">
+            <geom name="leg5_foot_geom" type="sphere" size="0.0115" rgba="0.06 0.06 0.06 1" mass="0.006" friction="1.2 0.015 0.002"/>
+            <site name="leg5_contact" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Leg 6: Back-Left -->
+      <body name="leg6_hip" pos="-0.056 0.044 0" euler="0 0 150">
+        <joint name="leg6_abduction" type="hinge" axis="0 0 1" range="-45 45" ref="0"/>
+        <geom name="leg6_hip_geom" type="box" pos="0.018 0 0" size="0.014 0.012 0.011" rgba="0.18 0.42 0.88 1" mass="0.011"/>
+        <body name="leg6_knee" pos="0.038 0 0" euler="0 22 0">
+          <joint name="leg6_flexion" type="hinge" axis="0 1 0" range="-90 90" ref="0"/>
+          <geom name="leg6_knee_servo" type="box" pos="0.014 0 0" size="0.011 0.010 0.009" rgba="0.16 0.40 0.85 1" mass="0.008"/>
+          <geom name="leg6_leg_geom" type="capsule" fromto="0 0 0 0.095 0 -0.078" size="0.0095" rgba="0.88 0.92 0.88 1" mass="0.022"/>
+          <body name="leg6_foot" pos="0.095 0 -0.078">
+            <geom name="leg6_foot_geom" type="sphere" size="0.0115" rgba="0.06 0.06 0.06 1" mass="0.006" friction="1.2 0.015 0.002"/>
+            <site name="leg6_contact" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!-- 12 motors: 6 abduction + 6 flexion -->
+    <motor name="leg1_abd_motor" joint="leg1_abduction"/>
+    <motor name="leg1_flex_motor" joint="leg1_flexion"/>
+    <motor name="leg2_abd_motor" joint="leg2_abduction"/>
+    <motor name="leg2_flex_motor" joint="leg2_flexion"/>
+    <motor name="leg3_abd_motor" joint="leg3_abduction"/>
+    <motor name="leg3_flex_motor" joint="leg3_flexion"/>
+    <motor name="leg4_abd_motor" joint="leg4_abduction"/>
+    <motor name="leg4_flex_motor" joint="leg4_flexion"/>
+    <motor name="leg5_abd_motor" joint="leg5_abduction"/>
+    <motor name="leg5_flex_motor" joint="leg5_flexion"/>
+    <motor name="leg6_abd_motor" joint="leg6_abduction"/>
+    <motor name="leg6_flex_motor" joint="leg6_flexion"/>
+  </actuator>
+
+  <sensor>
+    <!-- Joint position sensors -->
+    <jointpos name="leg1_abd_pos" joint="leg1_abduction"/>
+    <jointpos name="leg1_flex_pos" joint="leg1_flexion"/>
+    <jointpos name="leg2_abd_pos" joint="leg2_abduction"/>
+    <jointpos name="leg2_flex_pos" joint="leg2_flexion"/>
+    <jointpos name="leg3_abd_pos" joint="leg3_abduction"/>
+    <jointpos name="leg3_flex_pos" joint="leg3_flexion"/>
+    <jointpos name="leg4_abd_pos" joint="leg4_abduction"/>
+    <jointpos name="leg4_flex_pos" joint="leg4_flexion"/>
+    <jointpos name="leg5_abd_pos" joint="leg5_abduction"/>
+    <jointpos name="leg5_flex_pos" joint="leg5_flexion"/>
+    <jointpos name="leg6_abd_pos" joint="leg6_abduction"/>
+    <jointpos name="leg6_flex_pos" joint="leg6_flexion"/>
+
+    <!-- Joint velocity sensors -->
+    <jointvel name="leg1_abd_vel" joint="leg1_abduction"/>
+    <jointvel name="leg1_flex_vel" joint="leg1_flexion"/>
+    <jointvel name="leg2_abd_vel" joint="leg2_abduction"/>
+    <jointvel name="leg2_flex_vel" joint="leg2_flexion"/>
+    <jointvel name="leg3_abd_vel" joint="leg3_abduction"/>
+    <jointvel name="leg3_flex_vel" joint="leg3_flexion"/>
+    <jointvel name="leg4_abd_vel" joint="leg4_abduction"/>
+    <jointvel name="leg4_flex_vel" joint="leg4_flexion"/>
+    <jointvel name="leg5_abd_vel" joint="leg5_abduction"/>
+    <jointvel name="leg5_flex_vel" joint="leg5_flexion"/>
+    <jointvel name="leg6_abd_vel" joint="leg6_abduction"/>
+    <jointvel name="leg6_flex_vel" joint="leg6_flexion"/>
+
+    <!-- IMU sensors -->
+    <accelerometer name="torso_accel" site="imu_site"/>
+    <gyro name="torso_gyro" site="imu_site"/>
+    <framequat name="torso_quat" objtype="site" objname="imu_site"/>
+
+    <!-- Foot contact sensors -->
+    <touch name="leg1_touch" site="leg1_contact"/>
+    <touch name="leg2_touch" site="leg2_contact"/>
+    <touch name="leg3_touch" site="leg3_contact"/>
+    <touch name="leg4_touch" site="leg4_contact"/>
+    <touch name="leg5_touch" site="leg5_contact"/>
+    <touch name="leg6_touch" site="leg6_contact"/>
+  </sensor>
+
+  <!-- Exclude leg-leg collision so legs do not run into each other -->
+  <contact>
+    <exclude body1="leg1_hip" body2="leg2_hip"/>
+    <exclude body1="leg1_hip" body2="leg3_hip"/>
+    <exclude body1="leg1_hip" body2="leg4_hip"/>
+    <exclude body1="leg1_hip" body2="leg5_hip"/>
+    <exclude body1="leg1_hip" body2="leg6_hip"/>
+    <exclude body1="leg2_hip" body2="leg3_hip"/>
+    <exclude body1="leg2_hip" body2="leg4_hip"/>
+    <exclude body1="leg2_hip" body2="leg5_hip"/>
+    <exclude body1="leg2_hip" body2="leg6_hip"/>
+    <exclude body1="leg3_hip" body2="leg4_hip"/>
+    <exclude body1="leg3_hip" body2="leg5_hip"/>
+    <exclude body1="leg3_hip" body2="leg6_hip"/>
+    <exclude body1="leg4_hip" body2="leg5_hip"/>
+    <exclude body1="leg4_hip" body2="leg6_hip"/>
+    <exclude body1="leg5_hip" body2="leg6_hip"/>
+  </contact>
+</mujoco>

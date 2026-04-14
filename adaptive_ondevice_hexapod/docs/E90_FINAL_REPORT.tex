@@ -1,0 +1,201 @@
+% E90 Final Report — Adaptive on-device hexapod (hybrid scope: open-loop milestone + design roadmap)
+% Fill in metadata macros below before submission.
+% Build: pdflatex E90_FINAL_REPORT && bibtex E90_FINAL_REPORT && pdflatex E90_FINAL_REPORT && pdflatex E90_FINAL_REPORT
+
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\onehalfspacing
+
+% --- Title page metadata ---
+\newcommand{\CourseName}{Engineering 90}
+\newcommand{\StudentNames}{Howard Wang and Matthew Shiley}
+\newcommand{\AdvisorNames}{Allan Moser}
+\newcommand{\ReportTitle}{Simulation-Optimized Open-Loop Locomotion and an IMU-Adaptive Roadmap for a Twelve-DOF Hexapod}
+
+\title{\ReportTitle}
+\author{\StudentNames\\[0.5em]\CourseName\\Advisor(s): \AdvisorNames}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report describes a capstone project on a twelve-degree-of-freedom hexapod actuated through a Pololu Maestro from a Teensy~4.1 microcontroller. The primary completed contribution is a \emph{simulation-to-deployment} pipeline for \emph{open-loop} tripod locomotion: a reduced-order planar body model in Python screens gait parameters with constrained numerical optimization; the best parameter vector exports to firmware that reproduces the same sinusoidal abduction--flexion command law on the robot, with pulse-width clamps and a startup frequency ramp. Quantitative results in this repository are from the surrogate simulation (forward speed, attitude RMS, vertical oscillation, and objective cost). Separately, the repository documents a broader bio-inspired architecture---innate tripod rhythm, fast IMU-driven reflexes, and slow on-device parameter adaptation---with phased exit criteria and timing budgets. That adaptive stack is specified in design memoranda but is not fully implemented in the checked-in firmware; this report therefore emphasizes verifiable open-loop results while treating reflexes and learning as engineering requirements and future work. Benefits include low-dimensional, interpretable parameters, repeatable optimization artifacts, and explicit safety bounds before closing the loop. Project cost to date is tabulated from purchased electronics (Table~\ref{tab:cost}); chassis and remaining servos may increase the final total.
+\end{abstract}
+
+\section{Introduction}
+
+Legged robots must produce periodic limb motion, reject disturbances, and adjust to terrain under tight sensing and compute budgets. Insects achieve this with layered control: a central rhythm, fast sensory feedback that shapes forces and timing, and slower adaptation of gains. This project applies that philosophy to a tabletop hexapod with hobby servos: the long-term target is IMU-based reflexes and on-device learning on a Teensy~4.1. The \emph{proposed} end state is documented in the repository README and \texttt{docs/} tree: tripod gait generation, complementary-filter attitude estimation, a scalar stability score, reflex modulation of stride and posture, and optional SPSA or bandit updates on a five-dimensional parameter vector with EEPROM persistence.
+
+The \emph{accomplished} milestone captured in version control focuses on a complementary path: \textbf{open-loop} sinusoidal gaits optimized offline in simulation and transferred to the \texttt{hexapod\_openloop\_sine} sketch. This choice isolates gait generation and hardware mapping, yields reproducible numerical benchmarks, and establishes a baseline before adding IMU feedback. The benefits are faster iteration in software, clear separation between model error and sensor-based correction, and firmware that mirrors the optimizer's \texttt{leg\_commands()} function for traceability.
+
+\section{Technical Discussion}
+
+\subsection{Biological and control context}
+Insect locomotion is often modeled as decentralized feedback atop rhythmic pattern generators~\cite{aydin2023mechanosensory,chen2021adaptive}. For a single IMU, roll and pitch from accelerometer--gyro fusion are more reliable than yaw when magnetic disturbance is present~\cite{valenti2015quaternion,zhang2021attitude}. Hexapod posture control literature similarly emphasizes body orientation and angular rates on uneven terrain~\cite{bai2019posture}. Disturbance-triggered gait changes are a classical strategy for legged systems~\cite{johnson2010disturbance}.
+
+\subsection{Layered architecture (specification)}
+The intended runtime stack, documented in \texttt{docs/ARCHITECTURE.md}, has two timescales. A \textbf{fast tick} ($\sim$10--20\,ms) reads the IMU, fuses attitude, computes a stability score $S$, applies reflex adjustments to gait variables, steps the gait interpolator, clamps commands, and streams twelve Maestro setpoints. A \textbf{slow tick} (each gait cycle) aggregates windowed RMS of $S$, runs adaptation, and occasionally saves the best parameter vector. The complementary blend\begin{equation}
+\alpha \in (0,1),\quad
+\theta_{\mathrm{roll}} \leftarrow \alpha(\theta_{\mathrm{roll}} + \omega_x \Delta t) + (1-\alpha)\,\theta_{\mathrm{roll,accel}},
+\end{equation}
+(and analogously for pitch) is the nominal attitude update; Mahony or quaternion filters are noted as upgrades under vibration.
+
+\subsection{Open-loop sinusoidal gait (implemented)}
+For the no-IMU milestone, each leg follows resting abduction and flexion angles plus sinusoidal variation at common frequency $f$, with tripod group~B offset by $\pi$ radians from group~A. The optimizer searches rests, phase shifts, and $f$; amplitudes are fixed to default tables shared by Python and the generated header \texttt{optimized\_gait\_params.h}. The reduced-order simulation integrates an eight-state planar body with soft contact, damping, and stride thrust proxies; the objective rewards mean forward speed and penalizes backward motion, attitude oscillation, vertical bounce, torque proxy, contact imbalance, and deviation from a symmetric prior. Optimization uses L-BFGS-B with box constraints and random restarts.
+
+\subsection{Hardware and safety (constraints)}
+\texttt{docs/FIRMWARE.md} records the production stack: Teensy~4.1, UART at9600\,baud to the Maestro, channels 0--11 in FL/FR/ML/MR/RL/RR order with abduction then flexion per leg, and mapping from abstract joint integers to pulse width $u_k = \mathrm{clamp}(c_k + d_k q_k)$ with typical bounds 600--2400\,$\mu$s. Open-loop firmware adds degree-to-command gains $k_{\mathrm{abd}}$, $k_{\mathrm{flx}}$ and asymmetric command clamps before \texttt{jointToUs}; these gains are \emph{not} outputs of the ODE optimizer and must be tuned on the bench.
+
+\section{Requirements and Constraints}
+
+\subsection{Source of requirements}
+No separate ``requirements and constraints memo'' file is present in this repository. Table~\ref{tab:req} therefore traces engineering requirements to the phase exit criteria in \texttt{docs/PHASES.md}, hardware notes in \texttt{docs/FIRMWARE.md}, and the open-loop optimization scope in \texttt{firmware/hexapod\_openloop\_sine/README.md}. If your course issued a formal memo, replace or extend this table and paste the memo in an appendix.
+
+\subsection{Summary: met vs.\ not met}
+\textbf{Met (repository evidence):} discrete tripod baseline (\texttt{hexapod\_walking\_v2}); open-loop optimizer and summary JSON/CSV; firmware \texttt{hexapod\_openloop\_sine} with JSON-to-header script; calibration helpers (\texttt{set\_zero}, left/right side test sketches); complete design and architecture documentation.
+
+\textbf{Partial / not in version control:} Phase~1 IMU telemetry sketch path listed in README but not present as \texttt{hexapod\_imu\_test/}; Phases~2--4 adaptive firmware paths (\texttt{hexapod\_adaptive/}) not present; on-device PPO/SPSA described in \texttt{docs/on\_device\_learning/ON\_DEVICE\_LEARNING\_REPORT.md} remains planning.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Requirement traceability (hybrid scope). ``Evidence'' points to repository artifacts.}
+  \label{tab:req}
+  \begin{tabular}{@{}p{0.06\linewidth}p{0.36\linewidth}p{0.12\linewidth}p{0.38\linewidth}@{}}
+    \toprule
+    ID & Requirement & Status & Evidence / notes \\
+    \midrule
+    R1 & Phase~1: IMU read, complementary filter, USB telemetry at $\sim$50\,Hz; gait unchanged & Not met (in repo) & Specified in \texttt{PHASES.md}; folder not in tree \\
+    R2 & Phase~2: postural reflexes, clamps, serial tuning, EEPROM for gains & Not met (in repo) & \texttt{ARCHITECTURE.md} pseudocode only \\
+    R3 & Phase~3: stability score, cautious mode, push recovery, fall freeze & Not met (in repo) & Documented only \\
+    R4 & Phase~4: five-parameter adaptation, cost $J$, SPSA/bandit, EEPROM best-$J$ & Not met (in repo) & Documented only \\
+    R5 & Hardware: Teensy + Maestro + twelve servos + documented channel map & Met & \texttt{FIRMWARE.md}, sketches \\
+    R6 & Safety: pulse clamps; parameter slew (for adaptive layer) & Partial & Clamps in v2/openloop; slew spec in \texttt{ARCHITECTURE.md} \\
+    R7 & Open-loop: optimizer/firmware parity for sinusoidal law; export JSON & Met & \texttt{hexapod\_no\_imu\_optimization.py}, \texttt{sync\_gait\_params\_from\_json.py}, \texttt{optimized\_gait\_params.h} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Project cost}
+Table~\ref{tab:cost} lists electronics purchased for the platform to date (prices as recorded at time of purchase). A full twelve-DOF leg set uses twelve servos; this BOM includes eight DFRobot SER0039 units, so four additional servos (and any frame, fasteners, or printed parts not listed here) should be budgeted to complete the hexapod. No dollar figures appear in the optimization JSON---only physical parameters.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Bill of materials (electronics purchased to date; USD).}
+  \label{tab:cost}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}p{2.35cm}p{4.35cm}p{1.15cm}rrr@{}}
+    \toprule
+    Part & Description & Vendor & Qty & Unit & Line \\
+    \midrule
+    SparkFun 16771 & Microcontroller & DigiKey & 1 & 37.20 & 37.20 \\
+    Pololu 1354 & 18-channel servo driver & DigiKey & 1 & 46.95 & 46.95 \\
+    DFRobot DFR1202 & Step-down buck converter & DFRobot & 1 & 12.90 & 12.90 \\
+    SparkFun BMI270 & 6-DoF IMU & DigiKey & 1 & 18.50 & 18.50 \\
+    SparkFun 11855 & 2$\times$7.4\,V LiPo + charger (URGENEX kit, Amazon listing) & Amazon & 1 & 27.99 & 27.99 \\
+    SparkFun 14417 & Female Qwiic connector & DigiKey & 2 & 0.60 & 1.20 \\
+    SparkFun 17259 & 100\,mm Qwiic cable & DigiKey & 1 & 1.95 & 1.95 \\
+    SparkFun 17261 & Qwiic cable to female header & DigiKey & 1 & 1.95 & 1.95 \\
+    Amphenol Anytek YO0201500000G & 1$\times$2 screw-down terminal & DigiKey & 2 & 1.28 & 2.56 \\
+    DFRobot SER0039 & Servo motor & DigiKey & 8 & 5.90 & 47.20 \\
+    \midrule
+    \textbf{Total} & & & & & \textbf{198.40} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\normalsize
+Vendor product pages are archived in the team purchase records (DigiKey, DFRobot, Amazon).
+
+\section{Methods}
+
+\subsection{Baseline discrete gait}
+\texttt{firmware/hexapod\_walking\_v2/hexapod\_walking\_v2.ino} implements a deterministic tripod state machine with smoothed keyframes (\texttt{moveSmoothTo}). It is the behavioral reference for ``brain v0'' in \texttt{hexapod\_brain\_roadmap copy/ROADMAP.md}.
+
+\subsection{Simulation optimization}
+Script \texttt{hexapod\_brain\_roadmap copy/ode\_optimization\_no\_imu/hexapod\_no\_imu\_optimization.py} integrates the reduced-order model with \texttt{scipy.integrate.solve\_ivp}, evaluates the weighted objective on a steady-state window, and calls \texttt{scipy.optimize.minimize} (L-BFGS-B). Outputs include \texttt{no\_imu\_optimization\_summary.json}, time series CSV, and optional plots.
+
+\subsection{Parameter sync and firmware}
+From \texttt{firmware/hexapod\_openloop\_sine/}, run \texttt{python3 sync\_gait\_params\_from\_json.py} (optionally with path to a summary JSON) to regenerate \texttt{optimized\_gait\_params.h}. The sketch \texttt{hexapod\_openloop\_sine.ino} evaluates the sinusoidal law at \texttt{INTERP\_DELAY\_MS} (default 10\,ms), applies \texttt{FREQ\_RAMP\_MS} startup ramping, maps degrees to integer commands, clamps, and sends Pololu compact-protocol targets on \texttt{Serial1}.
+
+\subsection{Bench testing and calibration}
+\texttt{firmware/set\_zero/} and side-only test sketches support directional calibration. README in \texttt{hexapod\_openloop\_sine} documents lift-phase sign and scale tuning if feet drag or the robot shuffles backward.
+
+\section{Results}
+
+\subsection{Simulation metrics (from committed summary JSON)}
+Table~\ref{tab:sim} summarizes \texttt{hexapod\_brain\_roadmap copy/ode\_optimization\_no\_imu/no\_imu\_optimization\_summary.json}. These numbers characterize the \emph{surrogate model} after optimization; they are \emph{not} automatic guarantees on hardware without validating $k_{\mathrm{abd}}$, $k_{\mathrm{flx}}$, centers, and directions.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Optimizer-reported simulation metrics (committed summary file).}
+  \label{tab:sim}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Quantity & Value \\
+    \midrule
+    Gait frequency $f$ & 1.80\,Hz \\
+    Mean forward speed (steady window) & 0.234\,m/s \\
+    Total displacement (rollout) & 1.86\,m \\
+    Roll RMS & 0.440\,rad \\
+    Pitch RMS & $\sim 0$ (numerically near zero in file) \\
+    Vertical position RMS & 0.086\,m \\
+    Peak servo usage ratio (proxy) & 0.152 \\
+    Contact balance std.\ dev. & 0.388 \\
+    Objective cost & $-228.38$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Requirements satisfaction (results view)}
+Open-loop requirements (R5--R7) are supported by code and artifacts. Phase~1--4 firmware requirements (R1--R4) are \textbf{not} satisfied in the repository snapshot; documentation and roadmap materials describe intent and acceptance tests for future integration.
+
+\subsection{Cost}
+See Table~\ref{tab:cost}: electronics purchased to date total \textbf{US\$198.40}. Additional servos and mechanical hardware are not yet fully captured in that sum.
+
+\section{Discussion}
+
+\textbf{Context.} The simulation results demonstrate that the surrogate dynamics and objective can select a coherent frequency and phase structure with nontrivial forward progress in the model. The hybrid project framing is intentional: shipping documentation for IMU adaptation without claiming completed adaptive firmware avoids overstating experimental validation.
+
+\textbf{What went well.} A single mathematical command law is shared between Python and C++; JSON-to-header automation reduces transcription error; the existing Maestro and v2 infrastructure provides a stable execution layer.
+
+\textbf{Limitations.} Model mismatch, unmodeled compliance, and servo saturation can invalidate predicted speeds; degree-to-pulse scaling is manual; open-loop control does not reject pushes or slopes. Yaw and magnetometer-based heading remain poor choices without EMI control.
+
+\textbf{Lessons and advice for future E90 students.} Freeze a repeatable baseline gait and logging format before adding sensors. Treat simulation as screening, then budget time for bench tuning. Encode safety clamps and fall-freeze logic before high-energy tests. Keep a short written trace from optimizer output to firmware constants for examiners and your future self.
+
+\section{Conclusion}
+
+This report presented (i) a completed open-loop optimization and firmware deployment path for a twelve-DOF hexapod, (ii) quantitative simulation benchmarks committed in JSON form, and (iii) a documented roadmap toward IMU reflexes and slow on-device adaptation that is not yet fully realized in the repository firmware. Major takeaways: layered, bio-inspired control is a credible long-term architecture; the open-loop milestone delivers interpretable parameters and a verifiable toolchain; closing the loop will require IMU integration, validation protocols, and honest reporting of which phase exit criteria are met.
+
+\section*{Acknowledgements}
+We thank our advisor, Allan Moser, for guidance on the project. We also thank Swarthmore Engineering and any shop or lab staff who supported fabrication and bench testing. List here any funding sources beyond the Engineering department if applicable.
+
+% Use ieeetr (TeX Live basic); install IEEEtran package for IEEEtran.bst if preferred.
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\appendix
+\section{Repository map (selected paths)}
+\begin{itemize}
+  \item \texttt{README.md}, \texttt{docs/DESIGN.md}, \texttt{docs/ARCHITECTURE.md}, \texttt{docs/PHASES.md}, \texttt{docs/FIRMWARE.md}
+  \item \texttt{firmware/hexapod\_walking\_v2/}, \texttt{firmware/hexapod\_openloop\_sine/}
+  \item \texttt{firmware/hexapod\_test\_left\_side\_only/}, \texttt{firmware/hexapod\_test\_right\_side\_only/}, \texttt{firmware/set\_zero/}
+  \item \texttt{hexapod\_brain\_roadmap copy/ode\_optimization\_no\_imu/}
+  \item \texttt{docs/on\_device\_learning/ON\_DEVICE\_LEARNING\_REPORT.md}
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,7 @@
+config_path: configs/config_v7_anti_lazy.yaml
+name: anti_lazy_v7_1M
+num_envs: 1
+resume_from: null
+start_time: '2026-02-04T11:45:26.661222'
+total_timesteps: 1000000
+version: 2

@@ -1,0 +1,63 @@
+# Continue 1,4,5 vs 2,3,6 run: 150k -> 350k steps. Lower LR and linear decay for fine-tuning.
+env:
+  xml_path: "assets/hexapod.xml"
+  frame_skip: 5
+  max_episode_steps: 1000
+  obs_include_joint_pos: true
+  obs_include_joint_vel: false
+  obs_include_torso_quat: false
+  obs_include_torso_vel: false
+  obs_include_contact: false
+  obs_include_prev_action: true
+  min_torso_height: 0.05
+  max_torso_tilt: 35
+  max_flexion_angle: 55
+  action_smooth_alpha: 0.55
+  target_torso_height: 0.10
+  action_warmup_steps: 20
+
+reward:
+  smoothness_reward_weight: 0.02
+  stability_reward_weight: 0.15
+
+scpg:
+  use_tripod_gait: true
+  neurons_per_oscillator: 32
+  tau_mem: 20.0
+  tau_syn: 10.0
+  num_timesteps: 10
+
+ppo:
+  learning_rate: 0.0003
+  learning_rate_resume: 0.0001   # lower LR when resuming
+  lr_schedule: "linear"          # decay over training
+  lr_final_fraction: 0.2
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+training:
+  total_timesteps: 350000
+  eval_freq: 10000
+  n_eval_episodes: 5
+  save_freq: 50000
+  log_interval: 10
+  seed: 42
+  checkpoint_dir: "checkpoints"
+  log_dir: "logs"
+
+evaluation:
+  num_episodes: 10
+  render: true
+  save_video: true
+  video_dir: "videos"

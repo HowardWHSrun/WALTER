@@ -1,0 +1,153 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\onehalfspacing
+
+\title{Open-Loop Gait Optimization and\\On-Device Sinusoidal Firmware\\for the 12-DOF Hexapod}
+\author{E90 Hexapod Team}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note documents the \emph{no-IMU} gait optimization pipeline implemented in Python and its deployment on the Pololu Maestro--driven hexapod via the \texttt{hexapod\_openloop\_sine} Arduino sketch. The optimizer searches over 25 continuous parameters describing per-leg sinusoidal abduction and flexion with tripod phase coupling, using a reduced-order body model integrated with \texttt{scipy.integrate.solve\_ivp}. The firmware reproduces the same command law as the script \texttt{leg\_commands()}, maps optimizer angles to hardware joint commands, and applies safety clamps before commanding servos. IMU feedback and online adaptation are explicitly out of scope here.
+\end{abstract}
+
+\section{Purpose and scope}
+
+The goal is to align three artifacts:
+\begin{enumerate}
+    \item a \textbf{simulation-based optimizer} that improves open-loop gait parameters without inertial sensing;
+    \item a \textbf{JSON summary} of the best parameter vector and diagnostics; and
+    \item \textbf{embedded firmware} that runs the identical sinusoidal gait on the physical robot.
+\end{enumerate}
+
+\begin{sloppypar}
+The Python reference script is \texttt{hexapod\_no\_imu\_optimization.py}. It lives in \texttt{ode\_optimization\_no\_imu/}, next to the roadmap notes. The Teensy sketch and parameter header are in subdirectory \texttt{hexapod\_openloop\_sine/} under \texttt{firmware/}.
+\end{sloppypar}
+
+\section{Kinematic command law (optimizer and firmware)}
+
+\subsection{Leg indexing and tripod coupling}
+
+Legs are ordered consistently in both Python and firmware (Maestro channel order):
+\[
+\text{FL},\ \text{FR},\ \text{ML},\ \text{MR},\ \text{RL},\ \text{RR}.
+\]
+Tripod~A is $\{\mathrm{FL},\mathrm{MR},\mathrm{RL}\}$; tripod~B is $\{\mathrm{FR},\mathrm{ML},\mathrm{RR}\}$. The base phase offset for tripod~B is $\pi$ radians relative to tripod~A, matching \texttt{TRIPOD\_PHASE} in Python and \texttt{TRIPOD\_OFFSET\_RAD} in firmware.
+
+\subsection{Sinusoidal joint commands}
+
+Let $\varphi(t) = 2\pi f t$ with gait frequency $f$ in Hz. For leg index $i \in \{0,\ldots,5\}$, define the leg carrier phase
+\[
+\psi_i(t) = \varphi(t) + \delta_i + s^{\mathrm{abd}}_i,\qquad
+\psi'_i(t) = \varphi(t) + \delta_i + s^{\mathrm{flx}}_i,
+\]
+where $\delta_i \in \{0,\pi\}$ is the tripod offset and $s^{\mathrm{abd}}_i$, $s^{\mathrm{flx}}_i$ are abduction and flexion phase shifts (stored in degrees in the parameter file, converted to radians in software).
+
+The optimizer works in radians internally; amplitudes for abduction and flexion are fixed per leg from default tables \texttt{DEFAULT\_ABD\_AMP\_DEG} and \texttt{DEFAULT\_FLX\_AMP\_DEG} (converted to radians in Python). The commanded angles are
+\begin{align}
+\theta^{\mathrm{abd}}_i(t) &= \theta^{\mathrm{abd,rest}}_i + A^{\mathrm{abd}}_i \sin(\psi_i(t)), \\
+\theta^{\mathrm{flx}}_i(t) &= \theta^{\mathrm{flx,rest}}_i + A^{\mathrm{flx}}_i \sin(\psi'_i(t)).
+\end{align}
+
+The firmware evaluates the equivalent expressions using degrees for rests, shifts, and amplitudes, then maps to abstract integer joint commands (Section~\ref{sec:hardware}).
+
+\subsection{Optimization vector}
+
+The decision vector has 25 scalars:
+\begin{itemize}
+    \item $\theta^{\mathrm{abd,rest}} \in \mathbb{R}^6$ (degrees),
+    \item $\theta^{\mathrm{flx,rest}} \in \mathbb{R}^6$ (degrees),
+    \item $s^{\mathrm{abd}} \in \mathbb{R}^6$ (degrees),
+    \item $s^{\mathrm{flx}} \in \mathbb{R}^6$ (degrees),
+    \item $f \in \mathbb{R}$ (Hz).
+\end{itemize}
+Amplitudes $A^{\mathrm{abd}}_i$, $A^{\mathrm{flx}}_i$ are \emph{not} part of this vector; they match the Python defaults unless you change the source.
+
+\section{Reduced-order simulation model (Python)}
+
+The script integrates an eight-state planar body abstraction (longitudinal position and velocity, vertical position and velocity, roll and pitch and their rates). Leg forces depend on soft contact weighting from flexion commands, static support, damping, ground stiffness, and a stride thrust term proportional to abduction rate. The objective is a weighted sum:
+\begin{itemize}
+    \item \textbf{Primary:} maximize mean forward speed in the steady-state window (implemented as a negative penalty on mean $\dot{x}$).
+    \item \textbf{Penalties:} backward motion, roll and pitch RMS, vertical oscillation, a servo usage proxy, contact imbalance, and quadratic regularization toward the default parameter vector.
+\end{itemize}
+
+Optimization uses \texttt{scipy.optimize.minimize} with method L-BFGS-B, box constraints, multiple random restarts, and configurable weights (\texttt{OptimizationConfig}). Outputs include summary JSON, time series CSV, and optional plots.
+
+This model is an engineering surrogate for screening gait parameters; it is not a full multibody simulation. Agreement with hardware requires calibration of the degree-to-pulse mapping (Section~\ref{sec:hardware}).
+
+\section{Firmware mapping to hardware}
+\label{sec:hardware}
+
+\subsection{Abstract joint commands and Maestro}
+
+As in \texttt{hexapod\_walking\_v2.ino}, each servo receives a pulse width in microseconds:
+\[
+u_k = \mathrm{clamp}\bigl( c_k + d_k \, q_k \bigr),
+\]
+where $c_k$ is \texttt{servoCenter[$k$]}, $d_k \in \{-1,+1\}$ is \texttt{servoDir[$k$]}, and $q_k$ is the integer joint command. Values are clamped to \texttt{MIN\_US} and \texttt{MAX\_US} before being sent with the Pololu compact protocol on \texttt{Serial1}.
+
+\subsection{Degree-to-command scaling}
+
+The sketch introduces two tunable scales, $k_{\mathrm{abd}}$ and $k_{\mathrm{flx}}$ (\texttt{ABD\_CMD\_PER\_DEG}, \texttt{FLX\_CMD\_PER\_DEG}), such that
+\[
+q^{\mathrm{abd}}_i = \mathrm{round}\bigl(k_{\mathrm{abd}}\, \tilde{\theta}^{\mathrm{abd}}_i\bigr),\qquad
+q^{\mathrm{flx}}_i = \mathrm{round}\bigl(k_{\mathrm{flx}}\, \tilde{\theta}^{\mathrm{flx}}_i\bigr),
+\]
+where $\tilde{\theta}$ denotes the degree-valued sine law (rest plus amplitude times sine). Before \texttt{jointToUs}, commands pass through asymmetric bounds (\texttt{ABD\_CMD\_MIN/MAX}, \texttt{FLX\_CMD\_MIN/MAX}) to limit excursion on hardware.
+
+The scales are \emph{not} produced by the ODE optimizer; they must be tuned once so that optimized angles map to safe, effective motion on the physical robot. The defaults in the sketch ($k_{\mathrm{abd}}=12$, $k_{\mathrm{flx}}=42$) are starting points informed by the order of magnitude of the legacy v2 tripod joint commands.
+
+\subsection{Timing and startup}
+
+The main loop updates the phase integrator on a non-blocking schedule (\texttt{INTERP\_DELAY\_MS}, default 10~ms), with $\Delta t$ capped to avoid large jumps after pauses. Gait frequency can be linearly ramped from zero to $f$ over \texttt{FREQ\_RAMP\_MS} (default 3000~ms) to reduce the severity of motion at power-on.
+
+\subsection{Parameter injection from optimization results}
+
+File \texttt{optimized\_gait\_params.h} holds \texttt{OPT\_*} arrays and \texttt{OPT\_FREQUENCY\_HZ}. After a Python run, copy \texttt{optimized\_parameters} from \texttt{*\_summary.json} into this header (rests, shifts, frequency) and rebuild. Amplitudes in the header must match the optimizer's fixed tables unless you change both Python and firmware consistently.
+
+\section{Verification workflow}
+
+\begin{enumerate}
+    \item Run the optimizer script (or equivalent) and archive the emitted summary JSON.
+    \item Update \texttt{optimized\_gait\_params.h} and, if needed, $k_{\mathrm{abd}}$, $k_{\mathrm{flx}}$, and command clamps.
+    \item On the bench, confirm tripod alternation, absence of sustained servo saturation, and stable behavior before unattended operation.
+    \item Optionally compare logged joint commands against Python \texttt{leg\_commands()} on a common time grid for the same parameters.
+\end{enumerate}
+
+\section{Limitations and next steps}
+
+\begin{itemize}
+    \item \textbf{No IMU:} this firmware does not close the loop on attitude; disturbances are not compensated here.
+    \item \textbf{Model mismatch:} optimized parameters are only as good as the reduced ODE and the hardware mapping.
+    \item \textbf{Future work:} IMU reflex layer on top of this open loop; EEPROM or host push of optimized vectors; optional conversion script from JSON to \texttt{.h} to avoid manual transcription errors.
+\end{itemize}
+
+\section*{Repository paths}
+
+\begin{itemize}
+    \item \textbf{Optimizer:} \texttt{ode\_optimization\_no\_imu/hexapod\_no\_imu\_optimization.py}
+    \item \textbf{Firmware:} \texttt{hexapod\_openloop\_sine.ino}, \texttt{optimized\_gait\_params.h}
+    \item \textbf{Discrete baseline:} \texttt{hexapod\_walking\_v2/hexapod\_walking\_v2.ino}
+\end{itemize}
+
+\end{document}

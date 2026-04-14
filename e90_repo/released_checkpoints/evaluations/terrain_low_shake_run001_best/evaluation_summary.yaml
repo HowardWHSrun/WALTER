@@ -1,0 +1,65 @@
+by_terrain:
+  flat:
+    mean_forward_delta_x_m: 0.4714981642223726
+    mean_length: 300.0
+    mean_path_length_xy_m: 0.5141859383317244
+    mean_reward: 7740.333767835308
+    mean_xy_displacement_m: 0.4715410917642628
+    n_episodes: 1
+  rough:
+    mean_forward_delta_x_m: 0.47277876654303436
+    mean_length: 300.0
+    mean_path_length_xy_m: 0.5229979291095285
+    mean_reward: 7309.355156575079
+    mean_xy_displacement_m: 0.47735720979772955
+    n_episodes: 1
+  steps:
+    mean_forward_delta_x_m: 0.05480119425240332
+    mean_length: 300.0
+    mean_path_length_xy_m: 0.16674884756191846
+    mean_reward: 6015.207795534131
+    mean_xy_displacement_m: 0.06205721035269994
+    n_episodes: 1
+eval_protocol: 'Single checkpoint: PPO.load() once; each episode only env.reset(options=terrain_kind).
+  No retraining and no alternate weights between terrains.'
+max_forward_velocity: 0.21734855585782462
+mean_energy: 1.5212340354919434
+mean_forward_delta_x_m: 0.3330260416726034
+mean_forward_velocity: 0.0524245961539472
+mean_length: 300.0
+mean_path_length_xy_m: 0.4013109050010571
+mean_reward: 7021.632239981506
+mean_torso_height: 0.09506916534008238
+mean_xy_displacement_m: 0.33698517063823075
+model_basename: terrain_low_shake_run001_best.zip
+model_file_sha256: ef9434e5420f79786a5c1148328785198d1f93ac95b298f6928e0e472a6581cd
+model_resolved_path: released_checkpoints/terrain_low_shake_run001_best.zip
+num_episodes: 3
+per_episode:
+- episode: 1
+  forward_delta_x_m: 0.4714981642223726
+  length: 300
+  path_length_xy_m: 0.5141859383317244
+  reward: 7740.333767835308
+  terrain: flat
+  xy_displacement_m: 0.4715410917642628
+- episode: 2
+  forward_delta_x_m: 0.47277876654303436
+  length: 300
+  path_length_xy_m: 0.5229979291095285
+  reward: 7309.355156575079
+  terrain: rough
+  xy_displacement_m: 0.47735720979772955
+- episode: 3
+  forward_delta_x_m: 0.05480119425240332
+  length: 300
+  path_length_xy_m: 0.16674884756191846
+  reward: 6015.207795534131
+  terrain: steps
+  xy_displacement_m: 0.06205721035269994
+std_forward_delta_x_m: 0.19673537095477797
+std_length: 0.0
+std_path_length_xy_m: 0.16589943115821376
+std_reward: 733.0771958563229
+std_xy_displacement_m: 0.1944179249577511
+termination_counts: {}

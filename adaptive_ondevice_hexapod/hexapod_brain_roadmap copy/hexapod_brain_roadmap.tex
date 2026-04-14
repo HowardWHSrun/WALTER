@@ -1,0 +1,715 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\onehalfspacing
+
+\title{Hexapod Brain Roadmap\\\large Whiteboard Strategy Integrated with Current Firmware}
+\author{E90 Hexapod Team}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Purpose}
+
+This document turns the professor meeting whiteboard plan into a concrete implementation roadmap grounded in the current driving code:
+
+\begin{itemize}
+    \item \texttt{adaptive\_ondevice\_hexapod/firmware/hexapod\_walking\_v2/hexapod\_walking\_v2.ino}
+\end{itemize}
+
+The goal is to evolve from a deterministic tripod gait controller into an adaptive ``brain'' that remains safe on hardware while progressively introducing reflexes, online adaptation, and learning-based policy support.
+
+\section{Current System Baseline (What Already Exists)}
+
+The current firmware already provides a strong and safe base:
+
+\begin{enumerate}
+    \item \textbf{12-DOF servo actuation with calibration}
+    \begin{itemize}
+        \item Explicit channel map for all 6 legs and 2 joints per leg (abduction/flexion)
+        \item Per-servo direction and center calibration
+    \end{itemize}
+    \item \textbf{Reliable actuator interface}
+    \begin{itemize}
+        \item Pololu Maestro serial protocol
+        \item Hard pulse clamps (\texttt{MIN\_US}, \texttt{MAX\_US})
+    \end{itemize}
+    \item \textbf{Deterministic tripod gait state machine}
+    \begin{itemize}
+        \item Tripod A: lift $\rightarrow$ swing+push $\rightarrow$ plant
+        \item Tripod B: lift $\rightarrow$ swing+push $\rightarrow$ plant
+    \end{itemize}
+    \item \textbf{Smooth interpolation and phase timing}
+    \begin{itemize}
+        \item \texttt{moveSmoothTo(...)} with independent step counts and delays
+        \item Existing tunable gait constants (stride amplitudes, flex targets, phase durations)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Interpretation:} the robot already has a practical ``brain v0.'' The roadmap should preserve this safety backbone and layer adaptation on top rather than replacing it.
+
+\section{Whiteboard Ideas Mapped to Firmware Reality}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.30\linewidth} >{\raggedright\arraybackslash}p{0.62\linewidth}}
+\toprule
+\textbf{Whiteboard concept} & \textbf{Concrete mapping in current stack} \\
+\midrule
+TA/TB clock phases & Existing Tripod A/Tripod B phase sequence in firmware loop \\
+P0/P1/P2/P3 phase points & Keyframe targets built through \texttt{buildPose(...)} per sub-phase \\
+Waveform-based generation & Optional future gait generator mode; keep keyframe mode as default safety path \\
+PPO policy block & Learn bounded updates to gait parameters (not raw servo microseconds) \\
+EOM/predictive block & Short-horizon stability predictor from IMU + gait phase for shaping/safety \\
+Terrain/speed conditioning & Add condition vector (terrain class + speed target) to select parameter presets or policy outputs \\
+\bottomrule
+\end{tabular}
+\caption{Converting high-level meeting concepts into implementation-ready modules}
+\end{table}
+
+\section{Target Architecture}
+
+To stay robust on hardware, architecture is layered and conservative:
+
+\subsection*{Layer 1: Execution (existing)}
+\begin{itemize}
+    \item Servo command generation, clamping, and Maestro output
+    \item Interpolated motion between pose targets
+\end{itemize}
+
+\subsection*{Layer 2: Parameterized gait generator (next)}
+\begin{itemize}
+    \item Convert fixed constants into runtime state
+    \item Preserve tripod keyframes as canonical gait
+\end{itemize}
+
+\subsection*{Layer 3: Fast reflex loop (next)}
+\begin{itemize}
+    \item IMU-based roll/pitch and angular-rate stabilization
+    \item Applied every interpolation tick
+\end{itemize}
+
+\subsection*{Layer 4: Slow adaptation loop (next)}
+\begin{itemize}
+    \item Once per gait cycle/window, update baseline parameters
+    \item Enforce strict safety bounds and slew-rate limits
+\end{itemize}
+
+\subsection*{Layer 5: Learning policy (later)}
+\begin{itemize}
+    \item PPO trained in simulation with domain randomization
+    \item Output high-level bounded parameters only
+\end{itemize}
+
+\subsection*{Layer 6: Predictor (optional/late)}
+\begin{itemize}
+    \item Estimate short-horizon instability risk
+    \item Use for reward shaping and cautious-mode trigger
+\end{itemize}
+
+\section{Leg Coupling Specification (Concrete)}
+
+\subsection*{Leg indexing and tripod groups}
+
+Define leg set:
+\[
+\mathcal{L}=\{\mathrm{FL},\mathrm{FR},\mathrm{ML},\mathrm{MR},\mathrm{RL},\mathrm{RR}\}
+\]
+
+Tripod grouping (matching current firmware):
+\[
+\mathcal{A}=\{\mathrm{FL},\mathrm{MR},\mathrm{RL}\},\quad
+\mathcal{B}=\{\mathrm{FR},\mathrm{ML},\mathrm{RR}\}
+\]
+
+Joint channels per leg:
+\[
+q_l = (q^{\mathrm{abd}}_l,\ q^{\mathrm{flx}}_l)
+\]
+
+\subsection*{Phase-coupled clock}
+
+Use normalized gait clock $\varphi\in[0,1)$ over one full stride.
+Tripod phase offsets:
+\[
+\delta_l=
+\begin{cases}
+0.0, & l\in\mathcal{A}\\
+0.5, & l\in\mathcal{B}
+\end{cases}
+\]
+and per-leg local phase:
+\[
+\varphi_l = (\varphi + \delta_l)\bmod 1
+\]
+
+This enforces anti-phase coupling between tripods.
+
+\subsection*{Sub-phase schedule per leg}
+
+Each leg has three sub-phases using local phase $\varphi_l$:
+\begin{itemize}
+    \item Lift: $\varphi_l\in[0,\tau_1)$
+    \item Swing: $\varphi_l\in[\tau_1,\tau_2)$
+    \item Plant/Push: $\varphi_l\in[\tau_2,1)$
+\end{itemize}
+
+Initial values from v2 timing ratios:
+\[
+\tau_1 \approx \frac{\texttt{LIFT\_STEPS}}{\texttt{LIFT\_STEPS}+\texttt{SWING\_STEPS}+\texttt{PLANT\_STEPS}+\texttt{PUSH\_STEPS}},
+\]
+\[
+\tau_2 \approx \frac{\texttt{LIFT\_STEPS}+\texttt{SWING\_STEPS}}{\texttt{LIFT\_STEPS}+\texttt{SWING\_STEPS}+\texttt{PLANT\_STEPS}+\texttt{PUSH\_STEPS}}
+\]
+
+\subsection*{Per-leg command law}
+
+Let $b_l$ be baseline abduction offset (front/mid/rear specific), and $a_l$ be stride amplitude (front/mid/rear specific). Define signed stride direction:
+\[
+\sigma_l(\varphi_l)=
+\begin{cases}
++1, & \text{swing}\\
+-1, & \text{push}\\
+0,  & \text{lift/plant transition}
+\end{cases}
+\]
+
+Abduction command:
+\[
+q^{\mathrm{abd}}_l = b_l + s_{\mathrm{stride}}\cdot a_l\cdot \sigma_l(\varphi_l)
+\]
+
+Flexion command:
+\[
+q^{\mathrm{flx}}_l=
+\begin{cases}
+q_{\mathrm{lift}},  & \text{lift}\\
+q_{\mathrm{lift}},  & \text{swing}\\
+q_{\mathrm{plant}}, & \text{plant transition}\\
+q_{\mathrm{push}},  & \text{stance push}
+\end{cases}
+\]
+
+where:
+\[
+q_{\mathrm{lift}} = q^0_{\mathrm{lift}}\cdot s_{\mathrm{height}},\quad
+q_{\mathrm{push}} = q^0_{\mathrm{push}},\quad
+q_{\mathrm{plant}} = q^0_{\mathrm{start}}
+\]
+
+\subsection*{Roll/pitch coupling distribution across legs}
+
+Reflex corrections are coupled by side and body-axis:
+\begin{align}
+\Delta_{\mathrm{roll}} &= K_{\phi}\phi + K_{\dot{\phi}}\dot{\phi}\\
+\Delta_{\mathrm{pitch}} &= K_{\theta}\theta + K_{\dot{\theta}}\dot{\theta}
+\end{align}
+
+For each leg $l$, define side sign $s_l\in\{+1,-1\}$ and front-rear sign $r_l\in\{+1,0,-1\}$:
+\begin{itemize}
+    \item $s_l=+1$ for left legs (FL, ML, RL), $s_l=-1$ for right legs (FR, MR, RR)
+    \item $r_l=-1$ front (FL, FR), $r_l=0$ middle (ML, MR), $r_l=+1$ rear (RL, RR)
+\end{itemize}
+
+Then leg flex bias is:
+\[
+\Delta q^{\mathrm{flx}}_l = s_l\Delta_{\mathrm{roll}} + r_l\Delta_{\mathrm{pitch}}
+\]
+
+Final flex command before pulse conversion:
+\[
+\hat{q}^{\mathrm{flx}}_l = q^{\mathrm{flx}}_l + \Delta q^{\mathrm{flx}}_l
+\]
+followed by hard clamping and slew-rate limiting.
+
+\subsection*{Why this coupling is implementable now}
+
+This coupling model is directly compatible with the existing v2 structure:
+\begin{itemize}
+    \item Current tripod functions already encode anti-phase A/B behavior
+    \item Existing front/mid/rear amplitudes map to $a_l$
+    \item Existing start/lift/plant/push flex constants map to $q^0_{\cdot}$
+    \item Existing clamp and interpolation functions enforce safety and smoothness
+\end{itemize}
+
+\section{Core Parameterization}
+
+\subsection*{Runtime gait parameter vector}
+
+Define the control parameter vector:
+\[
+\mathbf{p}=
+\begin{bmatrix}
+q^0_{\mathrm{start}} & q^0_{\mathrm{push}} & q^0_{\mathrm{lift}} & q^0_{\mathrm{plant}} &
+a_F & a_M & a_R & \omega &
+s_{\mathrm{stride}} & s_{\mathrm{height}}
+\end{bmatrix}^{\top}
+\]
+where $(a_F,a_M,a_R)$ are front/middle/rear abduction amplitudes and $\omega$ is gait angular frequency.
+
+\subsection*{State, action, and observation}
+
+At fast tick $k$ (period $\Delta t$), define:
+\[
+\mathbf{x}_k=
+\begin{bmatrix}
+\phi_k & \theta_k & \dot{\phi}_k & \dot{\theta}_k & \varphi_k
+\end{bmatrix}^{\top},\quad
+\mathbf{u}_k=
+\begin{bmatrix}
+\Delta \mathbf{p}_k
+\end{bmatrix}
+\]
+with observation $\mathbf{o}_k=\mathbf{x}_k$ in the minimal onboard setup.
+
+\subsection*{Online adaptation parameter subset}
+
+For stability-first adaptation on hardware:
+\[
+\boldsymbol{\theta}=
+\begin{bmatrix}
+K_{\phi} & K_{\dot{\phi}} & K_{\theta} & K_{\dot{\theta}} &
+s_{\mathrm{stride}} & s_{\mathrm{height}} & s_{\mathrm{freq}}
+\end{bmatrix}^{\top}
+\]
+This is the vector updated online (SPSA/bandit/PPO output), while core safety bounds remain fixed.
+
+\section{Control and Stability Formulation}
+
+\subsection*{Phase oscillator and hybrid gait dynamics}
+
+Global gait phase:
+\begin{equation}
+\varphi_{k+1} = (\varphi_k + \omega_k \Delta t)\bmod 1
+\end{equation}
+
+Per-leg local phase:
+\begin{equation}
+\varphi_{l,k} = (\varphi_k + \delta_l)\bmod 1,\quad
+\delta_l\in\{0,0.5\}
+\end{equation}
+
+Piecewise gait mode map:
+\[
+m(\varphi_{l,k})\in\{\text{lift},\text{swing},\text{plant},\text{push}\}
+\]
+with switching boundaries $(\tau_1,\tau_2,\tau_3)$ obtained from step-count ratios.
+
+\subsection*{Per-leg command generator}
+
+For each leg $l$:
+\begin{align}
+q^{\mathrm{abd}}_{l,k} &= b_l + s_{\mathrm{stride},k}\,a_{g(l)}\,\sigma(m(\varphi_{l,k}))\\
+q^{\mathrm{flx,base}}_{l,k} &=
+\begin{cases}
+q^0_{\mathrm{lift}}\,s_{\mathrm{height},k}, & m=\text{lift/swing}\\
+q^0_{\mathrm{plant}}, & m=\text{plant}\\
+q^0_{\mathrm{push}}, & m=\text{push}
+\end{cases}
+\end{align}
+where $g(l)\in\{F,M,R\}$ maps each leg to front/middle/rear class.
+
+\subsection*{Reflex-coupled stabilization law}
+
+\begin{align}
+\Delta_{\mathrm{roll},k} &= K_{\phi}\phi_k + K_{\dot{\phi}}\dot{\phi}_k\\
+\Delta_{\mathrm{pitch},k} &= K_{\theta}\theta_k + K_{\dot{\theta}}\dot{\theta}_k
+\end{align}
+
+Leg-specific flex coupling:
+\begin{equation}
+\Delta q^{\mathrm{flx}}_{l,k}=s_l\Delta_{\mathrm{roll},k}+r_l\Delta_{\mathrm{pitch},k}
+\end{equation}
+with side sign $s_l\in\{+1,-1\}$ and front-rear sign $r_l\in\{-1,0,+1\}$.
+
+Final command before pulse conversion:
+\begin{equation}
+\hat{q}^{\mathrm{flx}}_{l,k}=q^{\mathrm{flx,base}}_{l,k}+\Delta q^{\mathrm{flx}}_{l,k}
+\end{equation}
+
+\subsection*{Safety projection and slew constraints}
+
+Pulse command for servo channel $c(l,j)$:
+\begin{equation}
+u^{\mu s}_{c,k}=\mathrm{clip}\!\left(\mu_c+d_c\hat{q}_{l,j,k},\ u^{\min}_c,\ u^{\max}_c\right)
+\end{equation}
+where $\mu_c$ is servo center and $d_c\in\{-1,+1\}$ is direction.
+
+Slew-limited command:
+\begin{equation}
+u^{\mu s}_{c,k}\leftarrow
+\mathrm{clip}\!\left(u^{\mu s}_{c,k},\ u^{\mu s}_{c,k-1}-\Delta^{\max}_c,\ u^{\mu s}_{c,k-1}+\Delta^{\max}_c\right)
+\end{equation}
+
+\subsection*{Instability metric and mode switching}
+
+Instantaneous score:
+\begin{equation}
+S_k=w_1|\phi_k|+w_2|\theta_k|+w_3|\dot{\phi}_k|+w_4|\dot{\theta}_k|
+\end{equation}
+Windowed RMS:
+\begin{equation}
+S_{\mathrm{rms}}(n)=\sqrt{\frac{1}{N}\sum_{i=n-N+1}^{n}S_i^2}
+\end{equation}
+
+Hybrid mode:
+\[
+\texttt{mode}=
+\begin{cases}
+\texttt{cautious}, & S_{\mathrm{rms}}>\gamma_H \text{ for } M_H \text{ cycles}\\
+\texttt{nominal}, & S_{\mathrm{rms}}<\gamma_L \text{ for } M_L \text{ cycles}
+\end{cases}
+\]
+with $\gamma_H>\gamma_L$ (hysteresis).
+
+\subsection*{Online adaptation objective and update}
+
+Per-window cost:
+\begin{equation}
+J=
+\alpha_1\,\mathrm{RMS}(\phi)+
+\alpha_2\,\mathrm{RMS}(\theta)+
+\alpha_3\,\mathrm{mean}(|\dot{\phi}|+|\dot{\theta}|)+
+\alpha_4\,\mathbb{I}_{\mathrm{fall}}+
+\alpha_5\,E_{\mathrm{cmd}}
+\end{equation}
+where
+\[
+E_{\mathrm{cmd}}=\frac{1}{NT}\sum_{k=1}^{N}\sum_{c=1}^{12}|u^{\mu s}_{c,k}-u^{\mu s}_{c,k-1}|
+\]
+is a command-variation proxy for effort.
+
+SPSA update:
+\begin{align}
+\boldsymbol{\theta}^{+}&=\boldsymbol{\theta}_n+c_n\boldsymbol{\Delta}_n,\quad
+\boldsymbol{\theta}^{-}=\boldsymbol{\theta}_n-c_n\boldsymbol{\Delta}_n\\
+\hat{\mathbf{g}}_n&=\frac{J(\boldsymbol{\theta}^{+})-J(\boldsymbol{\theta}^{-})}{2c_n}\odot\boldsymbol{\Delta}_n^{-1}\\
+\boldsymbol{\theta}_{n+1}&=\Pi_{[\boldsymbol{\ell},\mathbf{u}]}\!\left(\boldsymbol{\theta}_n-a_n\hat{\mathbf{g}}_n\right)
+\end{align}
+where $\Pi_{[\boldsymbol{\ell},\mathbf{u}]}$ is box projection to safety bounds.
+
+\subsection*{PPO objective for simulation policy}
+
+For policy $\pi_{\psi}(\Delta\boldsymbol{\theta}\mid \mathbf{o})$, use clipped objective:
+\begin{equation}
+\mathcal{L}^{\mathrm{CLIP}}(\psi)=
+\mathbb{E}_t\left[
+\min\left(
+r_t(\psi)\hat{A}_t,\ 
+\mathrm{clip}(r_t(\psi),1-\epsilon,1+\epsilon)\hat{A}_t
+\right)
+\right]
+\end{equation}
+with
+\[
+r_t(\psi)=\frac{\pi_{\psi}(a_t\mid o_t)}{\pi_{\psi_{\mathrm{old}}}(a_t\mid o_t)}
+\]
+
+The whiteboard intent is to tune architecture parameters from IMU-defined reward only. Define IMU signal vector:
+\[
+\mathbf{z}_t=
+\begin{bmatrix}
+\phi_t & \theta_t & \dot{\phi}_t & \dot{\theta}_t & \ddot{\phi}_t & \ddot{\theta}_t
+\end{bmatrix}^{\top}
+\]
+with $\ddot{\phi}_t,\ddot{\theta}_t$ estimated by finite differences on gyro rates.
+
+Primary IMU reward:
+\[
+r_t^{\mathrm{IMU}}=\exp\!\left(-\mathbf{z}_t^{\top}\mathbf{W}\mathbf{z}_t\right)-\beta_f\mathbb{I}_{\mathrm{fall},t}
+\]
+where $\mathbf{W}\succeq 0$ is diagonal in implementation.
+
+Equivalent weighted linearized form (for diagnostics and ablation):
+\[
+r_t^{\mathrm{lin}}=
+-\beta_{\phi}|\phi_t|
+-\beta_{\theta}|\theta_t|
+-\beta_{\dot{\phi}}|\dot{\phi}_t|
+-\beta_{\dot{\theta}}|\dot{\theta}_t|
+-\beta_{\ddot{\phi}}|\ddot{\phi}_t|
+-\beta_{\ddot{\theta}}|\ddot{\theta}_t|
+-\beta_f\mathbb{I}_{\mathrm{fall},t}.
+\]
+
+\section{Completion-Oriented Execution (No Calendar Assumption)}
+
+\subsection*{Completion Gate 0 (Mandatory): IMU signal availability on robot}
+\begin{itemize}
+    \item Bring up IMU hardware and firmware path so the controller receives live measurements each fast tick
+    \item Validate timestamped streams for:
+    \[
+    \{a_x,a_y,a_z,g_x,g_y,g_z\}_t
+    \]
+    with bounded drop rate and bounded jitter
+    \item Estimate:
+    \[
+    (\phi_t,\theta_t,\dot{\phi}_t,\dot{\theta}_t,\ddot{\phi}_t,\ddot{\theta}_t)
+    \]
+    and verify physical plausibility under known motions
+\end{itemize}
+\textbf{Gate criterion 0 (must pass before any training):}
+\[
+\mathrm{dropout\_rate}<1\%,\quad
+\mathrm{rms\_timestamp\_jitter}<0.1\Delta t,\quad
+\mathrm{bias\_drift}\ \text{bounded in static test}
+\]
+
+\subsection*{Completion Block A: Architecture lock-in}
+\begin{itemize}
+    \item Implement $(\varphi,\varphi_l)$ oscillator formalism and unified per-leg law in \texttt{hexapod\_walking\_v3}
+    \item Replace hardcoded phase functions with table-driven $(\tau_1,\tau_2,\tau_3)$ switching
+    \item Define architecture interfaces explicitly:
+    \[
+    \mathbf{o}_t \xrightarrow{\pi_{\psi}} \Delta\boldsymbol{\theta}_t,\quad
+    (\boldsymbol{\theta}_t,\varphi_t)\xrightarrow{\text{gait map}} \mathbf{q}_t,\quad
+    \mathbf{q}_t\xrightarrow{\text{servo map}} \mathbf{u}^{\mu s}_t
+    \]
+    \item Instrument full telemetry tuple:
+    \[
+    \{\varphi,\varphi_l,m_l,q_l,\hat{q}_l,u^{\mu s}_{c},S_k,\texttt{mode}\}
+    \]
+    \item Deliver parameter-identification script for $\mu_c,d_c,u^{\min}_c,u^{\max}_c,\Delta_c^{\max}$
+\end{itemize}
+\textbf{Completion criterion A:}
+\[
+\left|\frac{T_{\mathrm{v3}}-T_{\mathrm{v2}}}{T_{\mathrm{v2}}}\right|<0.05,\quad
+N_{\mathrm{clamp,v3}}\le N_{\mathrm{clamp,v2}}
+\]
+under matched test conditions.
+
+\subsection*{Completion Block B: IMU reward and stabilization closure}
+\begin{itemize}
+    \item Integrate IMU estimator at fast tick and compute $(\phi,\theta,\dot{\phi},\dot{\theta})$
+    \item Implement coupled bias law $\Delta q^{\mathrm{flx}}_{l}=s_l\Delta_{\mathrm{roll}}+r_l\Delta_{\mathrm{pitch}}$
+    \item Add hysteretic mode switch $(\gamma_H,\gamma_L,M_H,M_L)$ with bounded reparameterization:
+    \[
+    s_{\mathrm{stride}}\!\downarrow,\ s_{\mathrm{height}}\!\uparrow,\ \omega\!\downarrow
+    \]
+    \item Run disturbance matrix: frontal push, lateral push, incline start, uneven contact start
+\end{itemize}
+\textbf{Completion criterion B:}
+\[
+\Pr(\mathrm{fall})_{\mathrm{reflex}} \le 0.7\,\Pr(\mathrm{fall})_{\mathrm{v2}},\quad
+\bar{S}_{\mathrm{rms,reflex}}<\bar{S}_{\mathrm{rms,v2}}
+\]
+with identical disturbance protocol.
+
+\textbf{Training lock:} Completion Blocks C and D are not allowed unless Gate 0 and Block B are passed.
+
+\subsection*{Completion Block C: Parameter tuning engine}
+\begin{itemize}
+    \item Fix tunable architecture parameter set:
+    \[
+    \boldsymbol{\theta}=[K_{\phi},K_{\dot{\phi}},K_{\theta},K_{\dot{\theta}},s_{\mathrm{stride}},s_{\mathrm{height}},s_{\mathrm{freq}}]
+    \]
+    \item Use projected SPSA as deterministic pre-training/tuning baseline
+    \item Add EEPROM persistence for best $\boldsymbol{\theta}^{\star}$ by cost $J$
+    \item Produce ablation: reflex-only vs reflex+SPSA over identical terrain trials
+\end{itemize}
+\textbf{Completion criterion C:}
+\[
+\Delta J_{\mathrm{SPSA}} = J(\boldsymbol{\theta}^{\star})-J(\boldsymbol{\theta}_0) < 0
+\]
+with confidence interval excluding $0$ across repeated trials.
+
+\subsection*{Completion Block D: PPO parameter tuner and transfer}
+\begin{itemize}
+    \item Train PPO in \texttt{sim/} with randomized contact/friction/sensor-noise/delay while keeping architecture fixed
+    \item Restrict policy output to bounded parameter updates:
+    \[
+    \Delta\boldsymbol{\theta}_t=\pi_{\psi}(\mathbf{o}_t),\quad
+    \boldsymbol{\theta}_{t+1}=\Pi_{[\ell,u]}(\boldsymbol{\theta}_{t}+\Delta\boldsymbol{\theta}_t)
+    \]
+    \item Validate transfer on three terrains with fixed evaluation protocol
+    \item Final deliverables: architecture equations, PPO tuning equations, implementation logs, and demo script
+\end{itemize}
+\textbf{Completion criterion D:} PPO-assisted controller outperforms reflex+SPSA baseline on IMU reward functional:
+\[
+\mathcal{R}_{\mathrm{IMU}}=\frac{1}{T}\sum_{t=1}^{T} r_t^{\mathrm{IMU}}
+\]
+while preserving all safety constraints.
+
+\section{Safety Envelope (Non-Negotiable)}
+
+\begin{enumerate}
+    \item \textbf{Hard pulse bounds:} never bypass \texttt{MIN\_US}/\texttt{MAX\_US}
+    \item \textbf{Per-parameter bounds:} each tunable variable has fixed min/max
+    \item \textbf{Slew-rate limits:} no abrupt parameter jumps between cycles
+    \item \textbf{Fall detection:} if $|\phi|$ or $|\theta|$ exceeds critical angle, stop gait and enter safe mode
+    \item \textbf{Recovery policy:} controlled restart sequence only
+\end{enumerate}
+
+Bounded parameter box:
+\[
+\ell_i \le \theta_i \le u_i,\quad
+|\theta_{i,k+1}-\theta_{i,k}|\le \Delta^{\max}_{\theta_i}
+\]
+for every adaptive parameter $\theta_i$.
+
+\section{Repository Integration Plan}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.25\linewidth} >{\raggedright\arraybackslash}p{0.68\linewidth}}
+\toprule
+\textbf{Path} & \textbf{Planned role} \\
+\midrule
+\endhead
+\texttt{firmware/hexapod\_walking\_v2/} & Frozen reference controller for regression checks \\
+\texttt{firmware/hexapod\_walking\_v3/} & Runtime-parameterized gait, reflexes, adaptation hooks \\
+\texttt{sim/} & PPO training, randomization, ablations, policy export \\
+\texttt{host/} & Experiment runner, telemetry parser, parameter management \\
+\texttt{docs/} & Benchmarks, test protocols, safety limits, milestone evidence \\
+\bottomrule
+\end{longtable}
+
+\section{Practical To-Do Checklist (How To Proceed)}
+
+\subsection*{Step 1: Bring up IMU pipeline first (hard prerequisite)}
+\begin{itemize}
+    \item Wire and initialize IMU in firmware; stream raw accel/gyro to logs
+    \item Implement calibration routine (bias + axis sign/scale sanity checks)
+    \item Add health monitors: sample frequency, dropout count, timestamp jitter
+    \item Compute filtered orientation and rates:
+    \[
+    (\phi,\theta,\dot{\phi},\dot{\theta})
+    \]
+    and second derivatives via finite differences
+\end{itemize}
+\textbf{Artifact:} IMU health report with pass/fail on rate, jitter, and drift.
+
+\subsection*{Step 2: Freeze baseline and create regression harness}
+\begin{itemize}
+    \item Duplicate current controller as immutable baseline:
+    \[
+    \texttt{hexapod\_walking\_v2} \rightarrow \texttt{baseline\_frozen}
+    \]
+    \item Create one command/script that runs fixed-duration trials and exports logs
+    \item Log at minimum: phase, fall flag, clamp count, and IMU-derived state
+\end{itemize}
+\textbf{Artifact:} baseline log bundle + one reproducible run command.
+
+\subsection*{Step 3: Implement architecture skeleton in v3}
+\begin{itemize}
+    \item Create \texttt{hexapod\_walking\_v3} with explicit pipeline:
+    \[
+    \mathbf{o}_t \rightarrow \Delta\boldsymbol{\theta}_t \rightarrow \mathbf{q}_t \rightarrow \mathbf{u}^{\mu s}_t
+    \]
+    \item Move all gait constants into a runtime parameter struct/vector
+    \item Keep outputs numerically close to baseline before adding adaptation
+\end{itemize}
+\textbf{Artifact:} v3 firmware that reproduces v2 behavior with runtime parameters.
+
+\subsection*{Step 4: Define IMU reward and verify observability}
+\begin{itemize}
+    \item Compute IMU state vector:
+    \[
+    \mathbf{z}_t=[\phi_t,\theta_t,\dot{\phi}_t,\dot{\theta}_t,\ddot{\phi}_t,\ddot{\theta}_t]^{\top}
+    \]
+    \item Implement both reward forms:
+    \[
+    r_t^{\mathrm{IMU}}=\exp(-\mathbf{z}_t^{\top}\mathbf{W}\mathbf{z}_t)-\beta_f\mathbb{I}_{\mathrm{fall},t},
+    \quad
+    r_t^{\mathrm{lin}}
+    \]
+    \item Verify reward traces correlate with visible stability
+\end{itemize}
+\textbf{Artifact:} reward debug plot and IMU-reward consistency notes.
+
+\subsection*{Step 5: Implement leg-coupled reflex controller}
+\begin{itemize}
+    \item Implement per-leg flex bias:
+    \[
+    \Delta q^{\mathrm{flx}}_{l}=s_l\Delta_{\mathrm{roll}}+r_l\Delta_{\mathrm{pitch}}
+    \]
+    \item Add hysteretic cautious mode and bounded reparameterization
+    \item Validate anti-phase tripod coupling remains intact
+\end{itemize}
+\textbf{Artifact:} disturbance-test table (baseline vs reflex).
+
+\subsection*{Step 6: Enforce hard safety constraints everywhere}
+\begin{itemize}
+    \item Pulse bounds, parameter bounds, and slew bounds must all be active:
+    \[
+    \ell_i \le \theta_i \le u_i,\quad
+    |\theta_{i,k+1}-\theta_{i,k}| \le \Delta^{\max}_{\theta_i}
+    \]
+    \item Add fail-safe behavior for critical tilt/fall events
+    \item Record every safety intervention in logs
+\end{itemize}
+\textbf{Artifact:} safety validation checklist with pass/fail outcomes.
+
+\subsection*{Step 7: Run projected SPSA as a tuning baseline}
+\begin{itemize}
+    \item Optimize:
+    \[
+    \boldsymbol{\theta}=[K_{\phi},K_{\dot{\phi}},K_{\theta},K_{\dot{\theta}},s_{\mathrm{stride}},s_{\mathrm{height}},s_{\mathrm{freq}}]
+    \]
+    \item Use projected update:
+    \[
+    \boldsymbol{\theta}_{n+1}=\Pi_{[\ell,u]}(\boldsymbol{\theta}_n-a_n\hat{\mathbf{g}}_n)
+    \]
+    \item Persist best $\boldsymbol{\theta}^{\star}$ to EEPROM
+\end{itemize}
+\textbf{Artifact:} SPSA run history + best-parameter snapshot.
+
+\subsection*{Step 8: Train PPO as architecture-parameter tuner}
+\begin{itemize}
+    \item Keep gait architecture fixed; policy outputs only $\Delta\boldsymbol{\theta}$
+    \item Train with randomized simulator physics/sensor delay/noise
+    \item Use clipped PPO objective and IMU reward
+    \item Do not train/deploy if IMU health report fails Gate 0 thresholds
+\end{itemize}
+\textbf{Artifact:} trained checkpoint + validation curves.
+
+\subsection*{Step 9: Transfer PPO policy to hardware safely}
+\begin{itemize}
+    \item Apply policy output through projection before firmware update:
+    \[
+    \boldsymbol{\theta}_{t+1}=\Pi_{[\ell,u]}(\boldsymbol{\theta}_{t}+\Delta\boldsymbol{\theta}_t)
+    \]
+    \item Execute fixed evaluation protocol on multiple terrains
+    \item Compare baseline, reflex-only, SPSA, and PPO controllers
+\end{itemize}
+\textbf{Artifact:} final comparison report and demo script.
+
+\subsection*{Step 10: Lock final submission package}
+\begin{itemize}
+    \item Freeze code commit/tag for final architecture and policy
+    \item Save reproducibility package: logs, params, scripts, plots, and PDF
+    \item Ensure a single ``run-eval'' command reproduces headline metrics
+\end{itemize}
+\textbf{Artifact:} final reproducible release bundle.
+
+\section{Definition of Success (Quantitative)}
+
+Let baseline be v2 and candidate be the architecture+PPO controller. Success requires:
+\begin{align}
+\frac{J_{\mathrm{candidate}}-J_{\mathrm{v2}}}{J_{\mathrm{v2}}} &\le -0.25\\
+\Pr(\mathrm{fall}\mid \text{disturbance set})_{\mathrm{candidate}} &\le 0.7\,
+\Pr(\mathrm{fall}\mid \text{disturbance set})_{\mathrm{v2}}\\
+\mathcal{R}_{\mathrm{IMU,candidate}} &> \mathcal{R}_{\mathrm{IMU,v2}}
+\end{align}
+plus full reproducibility of logs, parameter files, and run scripts.
+
+\end{document}

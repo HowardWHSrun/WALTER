@@ -1,0 +1,6 @@
+# Regenerate with scripts/export_ode_tripod_teensy.py
+ode_tripod_hyper.h
+ode_tripod_actor_weights.h
+ode_tripod_nominal.h
+export_meta.yaml
+_smoke_ode_ppo.zip

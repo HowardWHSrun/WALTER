@@ -1,0 +1,124 @@
+# Multi-terrain training: flat, rough, steps (terrain_type: random samples each episode)
+# Same policy and rewards as config_v7_mlp_clean; env uses heightfield and overwrites at reset.
+env:
+  action_rate_limit: 0.15
+  action_scale_abd_deg: 42.0
+  action_scale_flex_deg: 72.0
+  action_smooth_alpha: 0.6
+  action_use_joint_limits: false
+  action_warmup_steps: 0
+  frame_skip: 5
+  max_episode_steps: 1000
+  max_flexion_angle: 88
+  max_torso_tilt: 45
+  min_torso_height: 0.05
+  obs_include_contact: true
+  obs_include_joint_pos: true
+  obs_include_joint_vel: true
+  obs_include_path_heading_error: true
+  obs_include_phase: true
+  obs_include_prev_action: true
+  obs_include_torso_quat: false
+  obs_include_torso_vel: true
+  obs_phase_frequency_hz: 0.45
+  obs_use_sensors: false
+  path_center: [0.0, 0.0]
+  path_radius: 0.5
+  path_type: circle
+  path_waypoint_reach_dist: 0.15
+  pd_kd: 1.0
+  pd_kp: 20.0
+  pd_steps_per_action: 10
+  reset_initial_forward_velocity: 0.06
+  reset_joint_noise_scale: 0.25
+  target_torso_height: 0.1
+  terminate_on_fall: false
+  terminate_on_leg_up: false
+  terminate_on_tilt: false
+  use_pd_control: true
+  # Terrain: random = sample flat / rough / steps each episode
+  terrain_type: random
+  terrain_rough_scale: 0.4
+  terrain_rough_min_height: -0.02
+  terrain_rough_max_height: 0.02
+  terrain_step_height: 0.02
+  terrain_step_length: 0.08
+  terrain_num_steps: 5
+  # Optional curriculum: flat only then flat+rough then all (set in training section)
+  terrain_curriculum: false
+  terrain_curriculum_stages: [100000, 200000]
+evaluation:
+  num_episodes: 10
+  render: true
+  save_video: true
+  video_dir: videos
+ppo:
+  batch_size: 64
+  clip_range: 0.2
+  ent_coef: 0.03
+  gae_lambda: 0.95
+  gamma: 0.99
+  learning_rate: 0.0003
+  max_grad_norm: 0.5
+  n_epochs: 10
+  n_steps: 2048
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+  use_mlp_policy: true
+  vf_coef: 0.5
+reward:
+  backward_penalty_weight: 0.0
+  fall_penalty_weight: 2.0
+  forward_distance_weight: 0.0
+  forward_velocity_weight: 0.0
+  height_penalty_threshold: 0.06
+  height_penalty_weight: 0.0
+  idle_velocity_penalty_weight: 1.0
+  idle_velocity_threshold: 0.02
+  imitation_abd_sign: 1.0
+  imitation_action_mix: 0.0
+  imitation_amp_abd: 0.25
+  imitation_amp_flex: 0.4
+  imitation_flex_sign: -1.0
+  imitation_frequency_hz: 0.45
+  imitation_weight: 0.2
+  jerk_penalty_weight: 0.35
+  joint_velocity_penalty_weight: 0.04
+  lateral_velocity_penalty_weight: 2.0
+  path_heading_reward_weight: 3.0
+  path_proximity_reward_weight: 2.0
+  path_proximity_tolerance: 0.1
+  smoothness_reward_weight: 2.5
+  stability_reward_weight: 1.0
+  stall_penalty_threshold: 0.05
+  stall_penalty_weight: 0.5
+  stance_action_penalty_weight: 0.35
+  stance_stability_penalty_weight: 0.2
+  survival_bonus: 0.0
+  target_forward_velocity: 0.09
+  target_velocity_scale: 0.12
+  target_velocity_weight: 28.0
+  tilt_penalty_weight: 2.0
+  velocity_reward_window: 5
+  yaw_rate_penalty_weight: 1.5
+scpg:
+  neurons_per_oscillator: 32
+  num_timesteps: 10
+  tau_mem: 20.0
+  tau_syn: 10.0
+  use_tripod_gait: true
+training:
+  checkpoint_dir: checkpoints
+  eval_freq: 10000
+  imitation_action_mix_decay_steps: 0
+  imitation_action_mix_end: 0.0
+  imitation_action_mix_eval: 0.0
+  imitation_action_mix_start: 0.0
+  log_dir: logs
+  log_interval: 10
+  n_eval_episodes: 5
+  save_freq: 50000
+  seed: 43
+  total_timesteps: 300000

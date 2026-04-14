@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+*.npz
+runs/
+# Training/eval scratch output at repo root only (do not ignore bundled eval MP4s).
+/videos/
+*.egg-info/
+.venv/
+venv/
+.env

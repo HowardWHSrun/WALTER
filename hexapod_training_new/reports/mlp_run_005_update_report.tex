@@ -1,0 +1,82 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\title{Concise Update: Baseline MLP \texorpdfstring{$\rightarrow$}{->} MLP Run 005}
+\author{Hexapod RL Project}
+\date{\today}
+
+\begin{document}
+\maketitle
+\small
+
+\section*{Goal}
+Improve realism of servo-driven locomotion while keeping forward movement:
+\begin{itemize}
+  \item less high-frequency wobble,
+  \item clearer lift--swing--land leg behavior,
+  \item stable movement on path.
+\end{itemize}
+
+\section*{What We Changed (vs baseline \texttt{mlp\_baseline})}
+\textbf{Timing and smoothness}
+\begin{itemize}
+  \item Phase/imitation frequency: \texttt{0.9 Hz} $\rightarrow$ \texttt{0.45 Hz}
+  \item Action smoothing enabled: \texttt{action\_smooth\_alpha = 0.6}
+  \item Action-rate cap: \texttt{action\_rate\_limit = 0.15}
+\end{itemize}
+
+\textbf{Contact-aware gait shaping}
+\begin{itemize}
+  \item Contact added to observation (\texttt{obs\_include\_contact = true})
+  \item Stance penalties to reduce motion while foot is planted:
+  \texttt{stance\_stability = 0.2}, \texttt{stance\_action = 0.35}
+\end{itemize}
+
+\textbf{Servo-friendly regularization}
+\begin{itemize}
+  \item \texttt{smoothness = 2.5}, \texttt{jerk = 0.35}, \texttt{joint\_velocity = 0.04}
+\end{itemize}
+
+\textbf{Step geometry and movement target}
+\begin{itemize}
+  \item Larger leg motion range:
+  \texttt{abd: 35$\rightarrow$42 deg}, \texttt{flex: 60$\rightarrow$72 deg}, \texttt{max flex: 70$\rightarrow$88 deg}
+  \item Target-speed shaping replaced raw velocity push:
+  \texttt{target\_forward\_velocity = 0.09}, \texttt{target\_velocity\_weight = 28.0}
+\end{itemize}
+
+\section*{Results Snapshot (Evaluation)}
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Metric & Baseline MLP & MLP Run 005 \\
+\midrule
+Mean reward & 2817.78 & 21962.45 \\
+Reward std. dev. & 3208.06 & 71.16 \\
+Mean forward velocity (m/s) & 0.01266 & 0.01881 \\
+Max forward velocity (m/s) & 1.0795 & 0.1750 \\
+Mean energy proxy (\(\sum a^2\)) & 3.8585 & 1.0746 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Interpretation:}
+\begin{itemize}
+  \item Run 005 is significantly more stable (much lower reward variance).
+  \item Average forward speed improved.
+  \item Extreme spikes dropped; control became smoother and more servo-plausible.
+  \item Energy proxy decreased, consistent with less jitter.
+\end{itemize}
+
+\section*{Visualization Upgrade}
+Evaluation videos now include per-frame overlays (step, \((x,y)\), forward distance, velocity), and each episode saves a trajectory plot (\texttt{\_trajectory.png}) for quick movement diagnostics relative to the environment.
+
+\section*{Bottom Line}
+Compared with baseline MLP, \texttt{mlp\_run\_005} delivers cleaner, more insect-like, servo-realistic locomotion while preserving useful forward movement.
+
+\end{document}

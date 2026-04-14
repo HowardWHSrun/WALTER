@@ -1,0 +1,7 @@
+config_path: configs/config_terrain_low_shake.yaml
+name: terrain_run_low_shake_001
+num_envs: 2
+resume_from: null
+start_time: '2026-02-16T21:11:21.964025'
+total_timesteps: 300000
+version: 1

@@ -1,0 +1,7 @@
+config_path: configs/config_imu6.yaml
+name: imu6_001
+num_envs: 2
+resume_from: null
+start_time: '2026-03-23T21:04:50.774698'
+total_timesteps: 300000
+version: 1

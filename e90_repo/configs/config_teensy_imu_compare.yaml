@@ -1,0 +1,120 @@
+# Shared environment + reward for Teensy-aligned sim: IMU observation + clock + sim_time (ODE tripod).
+# Used by scripts/compare_tier_policies_imu.py. Train ODE or MLP by swapping ppo.use_ode_tripod_policy / use_mlp_policy in a derived config or CLI fork.
+#
+# Observation (imu6_prev + phase + sim_time): accel(3), gyro(3), prev_action(12), sin/cos phase(2), sim_time(1) => 21 floats.
+# See docs/TEENSY_DEPLOY.md for Teensy ordering parity.
+
+env:
+  xml_path: "assets/hexapod.xml"
+  observation_mode: imu6_prev
+  obs_include_sim_time: true
+  obs_include_phase: true
+  obs_phase_frequency_hz: 0.45
+  imu_noise_std_accel: 0.02
+  imu_noise_std_gyro: 0.005
+  action_rate_limit: 0.15
+  action_scale_abd_deg: 42.0
+  action_scale_flex_deg: 72.0
+  action_smooth_alpha: 0.2
+  action_use_joint_limits: false
+  action_warmup_steps: 0
+  frame_skip: 6
+  max_episode_steps: 1000
+  max_flexion_angle: 88
+  max_torso_tilt: 45
+  min_torso_height: 0.05
+  obs_include_contact: false
+  obs_include_joint_pos: false
+  obs_include_joint_vel: false
+  obs_include_path_heading_error: false
+  obs_include_prev_action: false
+  obs_include_torso_quat: false
+  obs_include_torso_vel: false
+  obs_use_sensors: false
+  path_type: null
+  pd_kd: 1.25
+  pd_kp: 20.0
+  pd_steps_per_action: 10
+  reset_initial_forward_velocity: 0.06
+  reset_joint_noise_scale: 0.25
+  target_torso_height: 0.1
+  terminate_on_fall: false
+  terminate_on_leg_up: false
+  terminate_on_tilt: false
+  use_pd_control: true
+
+reward:
+  backward_penalty_weight: 0.0
+  fall_penalty_weight: 2.0
+  forward_distance_weight: 0.0
+  forward_velocity_weight: 12.0
+  height_penalty_threshold: 0.06
+  height_penalty_weight: 0.0
+  idle_velocity_penalty_weight: 2.0
+  idle_velocity_threshold: 0.02
+  imitation_weight: 0.0
+  jerk_penalty_weight: 0.08
+  joint_velocity_penalty_weight: 0.03
+  lateral_velocity_penalty_weight: 1.0
+  path_heading_reward_weight: 0.0
+  path_proximity_reward_weight: 0.0
+  path_proximity_tolerance: 0.1
+  smoothness_reward_weight: 0.5
+  stability_reward_weight: 1.0
+  stall_penalty_threshold: 0.05
+  stall_penalty_weight: 0.5
+  stance_action_penalty_weight: 0.05
+  stance_stability_penalty_weight: 0.05
+  survival_bonus: 0.0
+  target_forward_velocity: 0.09
+  target_velocity_scale: 0.12
+  target_velocity_weight: 22.0
+  tilt_penalty_weight: 2.0
+  velocity_reward_window: 7
+  yaw_rate_penalty_weight: 1.0
+
+# Default policy block for training forks (compare script overrides programmatically).
+ppo:
+  use_mlp_policy: false
+  use_ode_tripod_policy: true
+  ode_tripod:
+    sim_time_in_obs: true
+    freq_hz_range: [0.35, 1.6]
+    max_amp_flex: 0.95
+    max_amp_abd: 0.95
+    flex_sign: -1.0
+    abd_sign: 1.0
+    residual_scale: 0.15
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.06
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+scpg:
+  use_tripod_gait: false
+
+training:
+  seed: 43
+  total_timesteps: 300000
+  eval_freq: 10000
+  n_eval_episodes: 3
+  save_freq: 50000
+  log_interval: 10
+  checkpoint_dir: checkpoints
+  log_dir: logs
+
+evaluation:
+  num_episodes: 5
+  render: false
+  save_video: false
+  video_dir: videos

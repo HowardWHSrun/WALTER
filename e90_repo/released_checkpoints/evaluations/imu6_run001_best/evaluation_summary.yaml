@@ -1,0 +1,37 @@
+by_terrain: {}
+eval_protocol: 'Single checkpoint: PPO.load() once; each episode only env.reset(options=terrain_kind).
+  No retraining and no alternate weights between terrains.'
+max_forward_velocity: 0.10961832186540876
+mean_energy: 0.041500870138406754
+mean_forward_delta_x_m: 0.0025346932048000755
+mean_forward_velocity: 0.00031575587311686513
+mean_length: 300.0
+mean_path_length_xy_m: 0.012763737933784325
+mean_reward: 4533.049107931541
+mean_torso_height: 0.09335305641051735
+mean_xy_displacement_m: 0.004994135041973956
+model_basename: imu6_run001_best.zip
+model_file_sha256: 640f1e85f861278d92260fdb84f18b1c128d66b793df06fdc63872a719c57138
+model_resolved_path: released_checkpoints/imu6_run001_best.zip
+num_episodes: 2
+per_episode:
+- episode: 1
+  forward_delta_x_m: 0.006165588115400517
+  length: 300
+  path_length_xy_m: 0.011181605670850305
+  reward: 4539.8120347716485
+  terrain: null
+  xy_displacement_m: 0.006439148562353461
+- episode: 2
+  forward_delta_x_m: -0.0010962017058003663
+  length: 300
+  path_length_xy_m: 0.014345870196718345
+  reward: 4526.286181091433
+  terrain: null
+  xy_displacement_m: 0.003549121521594451
+std_forward_delta_x_m: 0.003630894910600442
+std_length: 0.0
+std_path_length_xy_m: 0.00158213226293402
+std_reward: 6.762926840107866
+std_xy_displacement_m: 0.001445013520379505
+termination_counts: {}

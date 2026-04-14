@@ -1,0 +1,7 @@
+config_path: configs/config_v7_mlp_clean.yaml
+name: mlp_run_005
+num_envs: 1
+resume_from: null
+start_time: '2026-02-13T17:02:02.425840'
+total_timesteps: 300000
+version: 1

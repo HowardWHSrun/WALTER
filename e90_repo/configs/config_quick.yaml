@@ -1,0 +1,65 @@
+# Quick Training Configuration for testing
+
+env:
+  xml_path: "assets/hexapod.xml"
+  frame_skip: 5
+  max_episode_steps: 1000
+  # Observation: only joint angles from servo motors
+  obs_include_joint_pos: true
+  obs_include_joint_vel: false
+  obs_include_torso_quat: false
+  obs_include_torso_vel: false
+  obs_include_contact: false
+  obs_include_prev_action: false
+  min_torso_height: 0.04
+  max_torso_tilt: 70
+
+reward:
+  smoothness_reward_weight: 0.0
+  stability_reward_weight: 0.0
+  # Reward: forward distance traveled (no weights needed)
+
+scpg:
+  num_legs: 6
+  neurons_per_oscillator: 16
+  hidden_size: 32
+  tau_mem: 20.0
+  tau_syn: 10.0
+  threshold: 1.0
+  reset: 0.0
+  encoding_type: "rate"
+  num_timesteps: 5
+  oscillator_frequency: 2.0
+  phase_coupling_strength: 0.5
+
+ppo:
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+training:
+  total_timesteps: 200000
+  eval_freq: 20000
+  n_eval_episodes: 5
+  save_freq: 50000
+  log_interval: 5
+  seed: 42
+  checkpoint_dir: "checkpoints"
+  log_dir: "logs"
+
+evaluation:
+  num_episodes: 5
+  render: true
+  save_video: true
+  video_dir: "videos"

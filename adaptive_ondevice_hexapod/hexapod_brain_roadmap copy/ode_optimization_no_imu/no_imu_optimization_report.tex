@@ -1,0 +1,165 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{setspace}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+\onehalfspacing
+\setlength{\itemsep}{1pt}
+\setlength{\topsep}{2pt}
+
+\title{No-IMU Gait Optimization for a 12-Servo Hexapod\\[4pt]
+\large Preliminary Results}
+\author{E90 Hexapod Project}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% ------------------------------------------------------------------
+\section{What Was Done}
+% ------------------------------------------------------------------
+
+We built and ran a Python optimization pipeline that tunes the hexapod's gait parameters using an ODE body model, without any IMU feedback. The workflow mirrors a standard MATLAB \texttt{ode45\,+\,fmincon} approach:
+
+\begin{enumerate}
+    \item Initialize the 25 gait parameters randomly (multiple restarts).
+    \item Simulate body dynamics with \texttt{scipy.integrate.solve\_ivp}.
+    \item Minimize a weighted cost function with \texttt{scipy.optimize.minimize} (SLSQP, bounded).
+    \item Select the best result across all restarts.
+\end{enumerate}
+
+\noindent\textbf{Key deliverables produced:}
+\begin{itemize}
+    \item \texttt{hexapod\_no\_imu\_optimization.py} -- runnable optimizer
+    \item \texttt{no\_imu\_optimization\_summary.json} -- machine-readable results
+    \item \texttt{no\_imu\_optimization\_timeseries.csv} -- full body trajectory
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Model Summary}
+% ------------------------------------------------------------------
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Item} & \textbf{Detail} \\
+\midrule
+Servos           & 12 $\times$ SG90 (9\,g, stall torque 0.176\,N$\cdot$m) \\
+Total mass       & 0.458\,kg \;(chassis 0.24 + battery/elec.\;0.11 + servos 0.108) \\
+Tripod groups    & $\mathcal{A}$=\{FL, MR, RL\},\; $\mathcal{B}$=\{FR, ML, RR\},\; $\pi$-offset \\
+Joint commands   & sinusoidal: $\;q_l(t) = q_{l,0} + A_l\sin(\omega t + \delta_l + \phi_l)$ \\
+Body states      & forward position, vertical position, roll, pitch \\
+Contact model    & smooth sigmoid ground-reaction heuristic \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The 25 optimization variables are:
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Variable set} & \textbf{Count} & \textbf{Description} \\
+\midrule
+Abduction rest angles      & 6 & standing leg splay per leg \\
+Flexion rest angles        & 6 & standing leg height per leg \\
+Abduction phase shifts     & 6 & timing offset for forward/back swing \\
+Flexion phase shifts       & 6 & timing offset for lift/plant \\
+Gait frequency             & 1 & global stride rate \\
+\midrule
+\textbf{Total}             & \textbf{25} & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The cost function penalizes: frequency error from target, roll/pitch oscillation, vertical oscillation, low forward speed, servo overload, contact imbalance, and deviation from a symmetric baseline.
+
+% ------------------------------------------------------------------
+\section{Results}
+% ------------------------------------------------------------------
+
+\subsection*{Optimized parameters \normalfont(leg order: FL, FR, ML, MR, RL, RR)}
+
+\begin{center}
+\begin{tabular}{l rrrrrr}
+\toprule
+ & FL & FR & ML & MR & RL & RR \\
+\midrule
+Abd.\ rest ($^\circ$) & 10.0 & 10.0 & 0.0 & 0.0 & $-$10.0 & $-$10.0 \\
+Flx.\ rest ($^\circ$) & 32.0 & 32.0 & 34.1 & 34.0 & 32.0 & 32.0 \\
+Abd.\ shift ($^\circ$) & 0.0 & $-$0.2 & $-$0.2 & 0.0 & $-$0.2 & $-$0.2 \\
+Flx.\ shift ($^\circ$) & $-$89.6 & $-$89.8 & $-$90.1 & $-$89.6 & $-$90.1 & $-$90.1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\[
+f^\star = 1.8008~\text{Hz}\quad(\text{target was }1.8~\text{Hz})
+\]
+
+\subsection*{Performance metrics}
+
+\begin{center}
+\begin{tabular}{l r l}
+\toprule
+\textbf{Metric} & \textbf{Value} & \textbf{Note} \\
+\midrule
+Gait frequency       & 1.8008\,Hz  & on target \\
+Roll RMS             & 0.244\,rad  & moderate \\
+Pitch RMS            & 0.021\,rad  & low \\
+Peak servo usage     & 12.8\%      & well within SG90 limits \\
+\midrule
+\multicolumn{3}{l}{\textit{Metrics below need model refinement:}} \\
+Forward speed        & 1.13\,m/s   & over-estimated (model lacks friction detail) \\
+Vertical RMS         & 6.21\,m     & not physical; contact model too soft \\
+Body dom.\ freq.     & 3.66\,Hz    & artifact of reduced dynamics \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------------
+\section{Key Takeaways}
+% ------------------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{Optimization framework is working.} The Python \texttt{solve\_ivp\,+\,SLSQP} pipeline runs end-to-end with multiple random restarts and produces repeatable parameter sets.
+    \item \textbf{Symmetric posture is preferred.} The optimizer converged to a front/mid/rear pattern that closely mirrors the current firmware constants.
+    \item \textbf{Abduction phase shifts are near zero.} This validates the existing tripod timing structure; the optimizer found no benefit in shifting the forward/back swing timing.
+    \item \textbf{Flexion shifts converge to $\boldsymbol{-90^\circ}$.} Lift timing is a quarter-cycle behind abduction, meaning the leg lifts when abduction velocity is highest -- physically sensible for ground clearance.
+    \item \textbf{Servo loading is low.} Peak estimated torque stays at about 13\% of the SG90 stall limit, leaving headroom for added payload or faster gaits.
+\end{enumerate}
+
+% ------------------------------------------------------------------
+\section{Limitations}
+% ------------------------------------------------------------------
+
+This is a reduced-order trend-finding model, not a validated simulator. The vertical displacement, forward speed, and body-resonance estimates are not yet physically meaningful because the contact/ground-reaction model is too simplified. These quantities should improve once the model is calibrated against measured robot data.
+
+% ------------------------------------------------------------------
+\section{Next Steps}
+% ------------------------------------------------------------------
+
+\begin{enumerate}
+    \item Improve the ground-contact formulation so vertical dynamics stay bounded.
+    \item Calibrate against measured stride frequency, step length, and body oscillation.
+    \item Add IMU roll/pitch feedback gains as additional optimization variables.
+    \item Compare no-IMU baseline versus IMU-stabilized gait.
+    \item Map optimized degree-space parameters back to Maestro pulse-space firmware constants.
+\end{enumerate}
+
+\end{document}

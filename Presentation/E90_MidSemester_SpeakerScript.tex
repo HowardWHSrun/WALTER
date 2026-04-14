@@ -1,0 +1,158 @@
+% E90 Mid-Semester Check-in: speaker notes aligned with
+% "E90 Mid Semester Check-in Presentation Slides - Howard & Matthew.pdf"
+% Technical context: hexapod_training_new (MuJoCo + Stable-Baselines3 PPO) and Wang.pdf proposal.
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{E90 Mid-Semester Check-in\\Speaker Notes (Howard \& Matthew)}
+\author{Aligned to March 2026 slides}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+These notes are a \emph{spoken script} you can follow slide-by-slide. Slide~6 covers the control hierarchy; Slide~7 introduces reinforcement learning and PPO in general; Slide~8 ties PPO to our MuJoCo setup. Slides~6--8 include technical detail consistent with the MuJoCo training stack in \texttt{hexapod\_training\_new} (Stable-Baselines3 PPO, optional PD, tripod gait / sCPG policy options). The proposal narrative in \texttt{Wang.pdf} (CPG + lightweight on-device adaptation) is referenced where it connects to simulation versus hardware. A compilable one-slide Beamer version of Slide~7 is in \texttt{E90\_slide\_ReinforcementLearning\_and\_PPO.tex}.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ---------------------------------------------------------------------------
+\section{Slide 1 -- Title}
+\textbf{On screen:} E90 Mid Semester Check-in; Howard + Matthew; Mar 2026; ENGR090.
+
+\textbf{Say:}
+Good [morning/afternoon]. I'm Howard [and I'm Matthew]. This is our mid-semester check-in for E90 on our adaptive hexapod project. We'll cover motivation, the platform we're building, how we're approaching control---especially PPO with a PD layer---what's left this term, and how we plan to evaluate.
+
+% ---------------------------------------------------------------------------
+\section{Slide 2 -- Why Adaptive Legged Locomotion?}
+\textbf{On screen:} Uneven terrain; hand-tuned controllers; learning systems and adaptation/forgetting; goal of a low-cost reproducible hexapod.
+
+\textbf{Say:}
+Legged robots have to work on terrain that isn't flat or predictable. Many classical controllers are tuned for specific conditions and degrade when those change. Some learning-based approaches are hard to run in real time on embedded hardware, or can forget behaviors when conditions shift. A lot of deployed systems still rely on fixed behaviors rather than adapting on board. Our goal is a budget-friendly hexapod testbed where locomotion can be made more robust---starting with simulation and moving toward hardware.
+
+% ---------------------------------------------------------------------------
+\section{Slide 3 -- System Overview}
+\textbf{On screen:} 12-DOF hexapod; Teensy 4.1; PWM driver; IMU; overhead camera for pose (vision long-term); PPO policy.
+
+\textbf{Say:}
+At a high level: we have a twelve degree-of-freedom hexapod---two joints per leg---with a printed body and servo-actuated legs. On the electronics side we're using a Teensy~4.1, a PWM servo driver, and regulated power. For feedback we have an IMU; for development we're also using world-frame pose from an overhead camera, with the plan to move toward onboard sensing. At the top of the control stack we're placing a policy trained with PPO; the next slides unpack how that interfaces with joint-level control.
+
+% ---------------------------------------------------------------------------
+\section{Slide 4 -- Mechanical Design}
+\textbf{On screen:} Linkages, two-axis leg layout; assembly status.
+
+\textbf{Say:}
+Mechanically, servos drive linkages so each leg has abduction and flexion. The legs mount to the body; the photo shows our current build state [note: two legs still to add if that matches the slide]. We're iterating on stiffness and attachment so the platform is reliable for walking tests.
+
+% ---------------------------------------------------------------------------
+\section{Slide 5 -- Electronics and Embedded System}
+\textbf{On screen:} Teensy 4.1; 12 metal-gear servos; PCA9685; dual 2S LiPo; IMU.
+
+\textbf{Say:}
+The Teensy gives us a fast microcontroller for a real-time control loop. We drive twelve metal-gear servos through a PCA9685. Power is from dual 2S LiPo packs with appropriate regulation. The IMU gives orientation and linear acceleration for closed-loop stability and, later, sim-to-real style policies that only see onboard sensors.
+
+% ---------------------------------------------------------------------------
+\section{Slide 6 -- Control Hierarchy: PPO + PD}
+\textbf{On screen:} High-level: PPO, 12-D action in $[-1,1]$; mid-level: targets scaled by abduction vs flexion; low-level: PD to torques.
+
+\textbf{Say (main):}
+We use a three-level hierarchy that matches what we implement in simulation and what we want on hardware.
+
+\textbf{High level.}
+Proximal Policy Optimization, PPO, outputs a twelve-dimensional action vector---one command per actuated joint. Actions are normalized to $[-1,1]$ and then interpreted by the environment or firmware as normalized setpoints, not raw PWM.
+
+\textbf{Mid level.}
+Those normalized commands map to \emph{target joint angles}. We use different scale factors for abduction versus flexion so the policy cannot command unrealistic ranges---for example flexion often needs a larger angular range than abduction. In our MuJoCo config this is implemented as \texttt{action\_scale\_abd\_deg} and \texttt{action\_scale\_flex\_deg} with joint limits enforced when \texttt{action\_use\_joint\_limits} is true.
+
+\textbf{Low level.}
+A PD controller turns angle error into torque: proportional gain pulls toward the target, derivative gain damps oscillations. In simulation, when \texttt{use\_pd\_control} is enabled, the policy outputs targets each control step and the environment applies PD over \texttt{pd\_steps\_per\_action} substeps with gains \texttt{pd\_kp}, \texttt{pd\_kd}. On the robot, the same structure maps to servo commands or torque requests depending on the actuator interface.
+
+\textbf{Optional one-liner tie to proposal (\texttt{Wang.pdf}):}
+The written proposal emphasizes a CPG-based gait with a small parameter tuner on device; in simulation we additionally explore spiking CPG policies and an ODE-tripod residual policy, all trained \emph{through} the same PPO outer loop---so the hierarchy ``learned high level + PD low level'' stays consistent while the policy class can vary.
+
+% ---------------------------------------------------------------------------
+\section{Slide 7 -- Reinforcement Learning \& PPO (What Are They?)}
+\textbf{On screen (bullet points):}
+
+\begin{itemize}
+  \item \textbf{Reinforcement learning}
+  \begin{itemize}
+    \item \textbf{Agent} interacts with the \textbf{environment} (simulated hexapod + terrain).
+    \item Each step: \textbf{observation} $\rightarrow$ \textbf{action} (e.g.\ 12 joint commands) $\rightarrow$ \textbf{reward}.
+    \item \textbf{Policy} maps observations to actions.
+    \item Learn from \textbf{trial and error} to maximize \textbf{long-term return} (discounted sum of rewards).
+    \item No hand-written joint trajectories---progress from simulated experience.
+  \end{itemize}
+  \item \textbf{Proximal Policy Optimization (PPO)}
+  \begin{itemize}
+    \item \textbf{Policy-gradient} method: update policy using gradients from rollouts.
+    \item \textbf{Actor} = policy; \textbf{critic} = value network (judges how good states are).
+    \item \textbf{Clipped} objective: limits how much the policy changes per update (``proximal'').
+    \item Fits \textbf{continuous control} and \textbf{high-dimensional} actions (e.g.\ twelve joints).
+  \end{itemize}
+\end{itemize}
+
+\textbf{Say:}
+Before we detail our MuJoCo training, here is the big picture. Reinforcement learning is the family of methods where a controller learns from interaction: try actions, get a numerical reward, repeat. We are not hand-designing every joint angle as a function of time; we specify what we want---move forward, do not fall---through the reward and termination rules, and the algorithm improves the policy over many simulated episodes.
+
+PPO is one practical algorithm in that family. It is on-policy: we collect fresh experience with the current policy, estimate how much better some actions are than the average using the critic, then nudge the policy in the direction that increases return. The clipping idea is important: it keeps updates small so learning does not explode when the hexapod is barely balancing. That is why PPO is a standard choice for legged robots and continuous action spaces. The next slide connects this generic picture to our specific hyperparameters and environment.
+
+% ---------------------------------------------------------------------------
+\section{Slide 8 -- PPO Formulation in MuJoCo}
+\textbf{On screen:} Strong baseline; stable updates; good for locomotion; high-dimensional actions; easier to tune than many policy-gradient methods.
+
+\textbf{Say (main):}
+We're training in MuJoCo with Stable-Baselines3's PPO implementation. Here's what that means in practice and why we chose it.
+
+\textbf{What PPO is doing.}
+The policy is stochastic: for continuous control it outputs a Gaussian over actions; the value network estimates returns for advantage estimation. We collect rollouts of length \texttt{n\_steps} per parallel environment, compute advantages with GAE using $\gamma$ and \texttt{gae\_lambda}, then optimize a clipped surrogate objective for several epochs over minibatches. The clip range limits how much the policy can change in one update, which stabilizes learning on legged systems.
+
+\textbf{Typical hyperparameters we use (from \texttt{configs/*.yaml}):}
+learning rate on the order of $3\times10^{-4}$; \texttt{n\_steps} 2048; \texttt{batch\_size} 64; \texttt{n\_epochs} 10; $\gamma=0.99$; \texttt{gae\_lambda} 0.95; \texttt{clip\_range} 0.2; entropy coefficient for exploration; value-function coefficient; gradient clipping. The actor and critic often use two hidden layers of 64 or 128 units unless we're running a baseline MLP or a structured policy.
+
+\textbf{Why PPO here.}
+It scales to our twelve-dimensional action space without brittle off-policy corrections. The clipped objective gives stable policy updates compared to vanilla policy gradients. For locomotion, that tends to mean fewer catastrophic collapses early in training. Tuning is relatively straightforward: learning rate, rollout length, entropy, and network width are the usual knobs.
+
+\textbf{Environment coupling.}
+Reward combines forward motion, velocity tracking, stability and smoothness terms, with termination on fall, excessive torso tilt, or joint limits---so PPO is maximizing a shaped objective that reflects walking quality, not raw torque.
+
+\textbf{Policy options in code (one sentence):}
+Beyond a plain MLP, we can train \texttt{SCPGPolicyV2} for a tripod spiking CPG structure or \texttt{ODETripodPolicy} for a phase-based tripod reference plus learned residual; PPO is the same outer algorithm in all cases.
+
+% ---------------------------------------------------------------------------
+\section{Slide 9 -- Remaining Work}
+\textbf{On screen:} Hardware tests (control hierarchy, power, mechanical revision); RL on hardware (IMU, learning environment, sim-to-real).
+
+\textbf{Say:}
+On the hardware side we still need structured tests of the full control hierarchy, validation of the power system under load, and any mechanical revisions from testing. On the learning side the roadmap is IMU-in-the-loop behavior, tightening the onboard ``learning environment,'' and sim-to-real transfer---reducing the gap between MuJoCo dynamics and the physical robot.
+
+% ---------------------------------------------------------------------------
+\section{Slide 10 -- Evaluation Plan}
+\textbf{On screen:} Terrains: flat, rough, soft; metrics: speed, path tracking, stability, smoothness; comparisons: baseline vs PPO, across terrains.
+
+\textbf{Say:}
+We'll compare controllers on flat ground, rough terrain, and softer surfaces like sand or grass where available. Metrics include forward speed, how well we track a path, pitch and roll stability, and smoothness of motion. We want side-by-side comparison of a hand-tuned or classical baseline against the PPO policy, and across terrain types. In simulation we already vary terrain heightfields and reward shaping; the same metric ideas transfer to hardware trials.
+
+% ---------------------------------------------------------------------------
+\section{Slide 11 -- Questions}
+\textbf{Say:}
+We're happy to take questions---on PPO and PD tuning, simulation versus hardware, timeline, or evaluation.
+
+\newpage
+\appendix
+\section*{Appendix A -- Quick reference: simulation vs.\ slides}
+\begin{itemize}
+  \item \textbf{Engine:} MuJoCo (\texttt{hexapod.xml} / \texttt{hexapod\_with\_terrain.xml}), Gymnasium API, Stable-Baselines3 \texttt{PPO}.
+  \item \textbf{Action:} 12-D; torques in torque mode or target angles when PD is enabled; normalized to $[-1,1]$ at the policy boundary.
+  \item \textbf{Observation (full mode):} joint states, torso orientation and velocity, contacts, previous action---52-D baseline; IMU-only modes reduce to onboard-sensor stacks for sim-to-real experiments.
+  \item \textbf{Reward (typical):} forward distance and velocity, survival, penalties for backward motion, height/tilt, control cost as configured.
+\end{itemize}
+
+\section*{Appendix B -- Mapping to \texttt{Wang.pdf}}
+The proposal describes a CPG tripod gait and lightweight on-device parameter adaptation (phase, amplitudes, stride height) with IMU and contact feedback. The \emph{simulation} codebase emphasizes PPO training of structured policies (sCPG / ODE tripod) plus optional PD and terrain---aligned with the same tripod gait and sensing narrative, while full on-device RL as in the proposal remains future hardware work.
+
+\end{document}

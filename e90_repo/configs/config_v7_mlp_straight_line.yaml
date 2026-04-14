@@ -1,0 +1,106 @@
+# MLP v2: same as mlp_baseline but reward straight-line walking.
+# - Stronger lateral velocity penalty (reduce sideways drift)
+# - Yaw rate penalty (discourage turning; walk in a straight line)
+# Usage: python train.py --config configs/config_v7_mlp_straight_line.yaml --version 1 --output-dir runs/mlp_straight_line
+env:
+  xml_path: "assets/hexapod.xml"
+  frame_skip: 5
+  max_episode_steps: 1000
+  obs_use_sensors: false
+  obs_include_joint_pos: true
+  obs_include_joint_vel: true
+  obs_include_torso_quat: false
+  obs_include_torso_vel: true
+  obs_include_contact: false
+  obs_include_prev_action: true
+  obs_include_phase: true
+  obs_phase_frequency_hz: 0.9
+  use_pd_control: true
+  pd_kp: 20.0
+  pd_kd: 1.0
+  pd_steps_per_action: 10
+  action_use_joint_limits: false
+  action_scale_abd_deg: 35.0
+  action_scale_flex_deg: 60.0
+  min_torso_height: 0.05
+  max_torso_tilt: 45
+  max_flexion_angle: 70
+  action_smooth_alpha: 0.0
+  target_torso_height: 0.10
+  action_warmup_steps: 0
+  terminate_on_fall: false
+  terminate_on_tilt: false
+  terminate_on_leg_up: false
+  reset_joint_noise_scale: 0.25
+  reset_initial_forward_velocity: 0.15
+
+reward:
+  imitation_weight: 0.2
+  imitation_frequency_hz: 0.9
+  imitation_amp_flex: 0.4
+  imitation_amp_abd: 0.25
+  imitation_action_mix: 0.0
+  imitation_flex_sign: -1.0
+  imitation_abd_sign: 1.0
+  forward_distance_weight: 0.0
+  forward_velocity_weight: 50.0
+  velocity_reward_window: 1
+  idle_velocity_threshold: 0.03
+  idle_velocity_penalty_weight: 1.5
+  stall_penalty_threshold: 0.08
+  stall_penalty_weight: 1.0
+  smoothness_reward_weight: 0.0
+  stability_reward_weight: 0.0
+  survival_bonus: 0.0
+  backward_penalty_weight: 0.0
+  # Straight-line: penalize lateral drift and turning
+  lateral_velocity_penalty_weight: 2.5
+  yaw_rate_penalty_weight: 2.0
+  height_penalty_weight: 0.0
+  height_penalty_threshold: 0.06
+  tilt_penalty_weight: 2.0
+  fall_penalty_weight: 2.0
+
+scpg:
+  use_tripod_gait: true
+  neurons_per_oscillator: 32
+  tau_mem: 20.0
+  tau_syn: 10.0
+  num_timesteps: 10
+
+ppo:
+  use_mlp_policy: true
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.03
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+
+training:
+  total_timesteps: 300000
+  eval_freq: 10000
+  n_eval_episodes: 5
+  save_freq: 50000
+  log_interval: 10
+  seed: 42
+  checkpoint_dir: "checkpoints"
+  log_dir: "logs"
+  imitation_action_mix_start: 0.0
+  imitation_action_mix_end: 0.0
+  imitation_action_mix_decay_steps: 0
+  imitation_action_mix_eval: 0.0
+
+evaluation:
+  num_episodes: 10
+  render: true
+  save_video: true
+  video_dir: "videos"

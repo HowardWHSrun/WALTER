@@ -1,0 +1,36 @@
+% Single slide: Reinforcement Learning + PPO (for deck insertion).
+% Compile: pdflatex E90_slide_ReinforcementLearning_and_PPO.tex
+% Or copy the frame into a larger Beamer presentation.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\title[E90]{E90 Mid-Semester Check-in}
+\author{Howard \& Matthew}
+\date{March 2026}
+
+\begin{document}
+
+\begin{frame}{Reinforcement Learning \& PPO}
+  \footnotesize
+  \textbf{Reinforcement learning}
+  \begin{itemize}\setlength{\itemsep}{0.15em}
+    \item \textbf{Agent} vs.\ \textbf{environment} (sim robot + terrain)
+    \item Loop: \textbf{obs} $\rightarrow$ \textbf{action} $\rightarrow$ \textbf{reward}
+    \item \textbf{Policy}: obs $\rightarrow$ action
+    \item Maximize \textbf{long-term return}; learn by \textbf{trial and error}
+    \item No fixed joint script---reward tells us what ``good'' means
+  \end{itemize}
+  \vspace{0.35em}
+  \textbf{PPO (Proximal Policy Optimization)}
+  \begin{itemize}\setlength{\itemsep}{0.15em}
+    \item \textbf{Policy-gradient} algorithm (updates from rollout data)
+    \item \textbf{Actor} = policy; \textbf{critic} = value network
+    \item \textbf{Clipped} updates $\Rightarrow$ small, stable policy changes
+    \item Strong fit for \textbf{continuous} actions (e.g.\ 12 joints)
+  \end{itemize}
+\end{frame}
+
+\end{document}

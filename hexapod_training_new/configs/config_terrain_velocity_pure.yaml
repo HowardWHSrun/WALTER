@@ -1,0 +1,106 @@
+# Pure forward-velocity reward (single active shaping term). Minimal YAML: every other
+# reward uses make_hexapod_env defaults — except four factory defaults that MUST be
+# zeroed (forward_distance, survival, backward, height).
+#
+# Expect less stable gaits than config_terrain_velocity_only.yaml; use for ablations.
+
+env:
+  action_rate_limit: 0.10
+  action_scale_abd_deg: 42.0
+  action_scale_flex_deg: 72.0
+  action_smooth_alpha: 0.75
+  action_use_joint_limits: false
+  action_warmup_steps: 0
+  frame_skip: 6
+  max_episode_steps: 1000
+  max_flexion_angle: 88
+  max_torso_tilt: 45
+  min_torso_height: 0.05
+  obs_include_contact: true
+  obs_include_joint_pos: true
+  obs_include_joint_vel: true
+  obs_include_path_heading_error: true
+  obs_include_phase: true
+  obs_include_prev_action: true
+  obs_include_torso_quat: false
+  obs_include_torso_vel: true
+  obs_phase_frequency_hz: 0.45
+  obs_use_sensors: false
+  path_center: [0.0, 0.0]
+  path_radius: 0.5
+  path_type: circle
+  path_waypoint_reach_dist: 0.15
+  pd_kd: 1.25
+  pd_kp: 20.0
+  pd_steps_per_action: 10
+  reset_initial_forward_velocity: 0.06
+  reset_joint_noise_scale: 0.25
+  target_torso_height: 0.1
+  terminate_on_fall: false
+  terminate_on_leg_up: false
+  terminate_on_tilt: false
+  use_pd_control: true
+  terrain_type: random
+  terrain_rough_scale: 0.4
+  terrain_rough_min_height: -0.02
+  terrain_rough_max_height: 0.02
+  terrain_step_height: 0.02
+  terrain_step_length: 0.08
+  terrain_num_steps: 5
+  terrain_curriculum: false
+  terrain_curriculum_stages: [100000, 200000]
+
+evaluation:
+  num_episodes: 10
+  render: true
+  save_video: true
+  video_dir: videos
+  exaggerate_terrain_for_video: false
+  eval_terrain_base_seed: 0
+
+ppo:
+  batch_size: 64
+  clip_range: 0.2
+  ent_coef: 0.03
+  gae_lambda: 0.95
+  gamma: 0.99
+  learning_rate: 0.0003
+  max_grad_norm: 0.5
+  n_epochs: 10
+  n_steps: 2048
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+  use_mlp_policy: true
+  vf_coef: 0.5
+
+reward:
+  forward_distance_weight: 0.0
+  survival_bonus: 0.0
+  backward_penalty_weight: 0.0
+  height_penalty_weight: 0.0
+  forward_velocity_weight: 25.0
+  velocity_reward_window: 1
+  velocity_reward_uncapped: false
+
+scpg:
+  neurons_per_oscillator: 32
+  num_timesteps: 10
+  tau_mem: 20.0
+  tau_syn: 10.0
+  use_tripod_gait: true
+
+training:
+  checkpoint_dir: checkpoints
+  eval_freq: 10000
+  imitation_action_mix_decay_steps: 0
+  imitation_action_mix_eval: 0.0
+  imitation_action_mix_end: 0.0
+  imitation_action_mix_start: 0.0
+  log_dir: logs
+  log_interval: 10
+  n_eval_episodes: 5
+  save_freq: 50000
+  seed: 43
+  total_timesteps: 300000

@@ -1,0 +1,37 @@
+by_terrain: {}
+eval_protocol: 'Single checkpoint: PPO.load() once; each episode only env.reset(options=terrain_kind).
+  No retraining and no alternate weights between terrains.'
+max_forward_velocity: 0.15788185880492522
+mean_energy: 0.039408888667821884
+mean_forward_delta_x_m: 0.010964539943834617
+mean_forward_velocity: 0.0015485860718696307
+mean_length: 300.0
+mean_path_length_xy_m: 0.012226407862341759
+mean_reward: -735.0929339522154
+mean_torso_height: 0.09252477184377726
+mean_xy_displacement_m: 0.011477693207100553
+model_basename: scpg_anti_lazy_1M_best.zip
+model_file_sha256: 7297da9d4bbbc9e3f5ddcf5d598baa6f4306114b7e25536dfee03ef175a10456
+model_resolved_path: released_checkpoints/scpg_anti_lazy_1M_best.zip
+num_episodes: 2
+per_episode:
+- episode: 1
+  forward_delta_x_m: 0.009441030245575485
+  length: 300
+  path_length_xy_m: 0.010659279595168826
+  reward: -753.2989350345549
+  terrain: null
+  xy_displacement_m: 0.010212503148690023
+- episode: 2
+  forward_delta_x_m: 0.012488049642093749
+  length: 300
+  path_length_xy_m: 0.013793536129514693
+  reward: -716.8869328698757
+  terrain: null
+  xy_displacement_m: 0.012742883265511084
+std_forward_delta_x_m: 0.001523509698259132
+std_length: 0.0
+std_path_length_xy_m: 0.0015671282671729332
+std_reward: 18.206001082339583
+std_xy_displacement_m: 0.0012651900584105301
+termination_counts: {}

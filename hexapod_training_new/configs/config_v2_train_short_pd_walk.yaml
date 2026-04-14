@@ -1,0 +1,82 @@
+# Short run with PD control + stronger locomotion rewards
+env:
+  xml_path: "assets/hexapod.xml"
+  frame_skip: 5
+  max_episode_steps: 1000
+  # Observation: include forward velocity explicitly
+  obs_use_sensors: false
+  obs_include_joint_pos: true
+  obs_include_joint_vel: false
+  obs_include_torso_quat: false
+  obs_include_torso_vel: true
+  obs_include_contact: false
+  obs_include_prev_action: true
+  # PD control: policy outputs target positions, PD computes torques
+  use_pd_control: true
+  pd_kp: 8.0
+  pd_kd: 0.5
+  pd_steps_per_action: 5
+  action_use_joint_limits: true
+  # Termination limits
+  min_torso_height: 0.05
+  max_torso_tilt: 35
+  max_flexion_angle: 55
+  # Action smoothing + warmup (reduced for more motion)
+  action_smooth_alpha: 0.05
+  target_torso_height: 0.10
+  action_warmup_steps: 10
+
+reward:
+  # Emphasize forward motion and penalize stalling
+  forward_distance_weight: 5.0
+  forward_velocity_weight: 40.0
+  idle_velocity_threshold: 0.03
+  idle_velocity_penalty_weight: 0.3
+  smoothness_reward_weight: 0.005
+  stability_reward_weight: 0.02
+  # Optional: soft penalty near tilt/flexion limits
+  # near_termination_penalty_weight: 0.1
+  # near_termination_margin_deg: 10
+
+scpg:
+  use_tripod_gait: true
+  neurons_per_oscillator: 32
+  tau_mem: 20.0
+  tau_syn: 10.0
+  num_timesteps: 10
+
+ppo:
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+training:
+  total_timesteps: 150000
+  eval_freq: 10000
+  n_eval_episodes: 5
+  save_freq: 50000
+  log_interval: 10
+  seed: 42
+  checkpoint_dir: "checkpoints"
+  log_dir: "logs"
+  # Optional: VecNormalize
+  # use_vec_normalize: true
+  # norm_obs: true
+  # norm_reward: true
+
+evaluation:
+  num_episodes: 10
+  render: true
+  save_video: true
+  video_dir: "videos"

@@ -1,0 +1,85 @@
+# Hexapod sCPG RL Training Configuration
+
+# Environment settings
+env:
+  xml_path: "assets/hexapod.xml"
+  frame_skip: 5  # Number of simulation steps per action
+  max_episode_steps: 1000
+  
+  # Observation settings - only joint angles from servo motors
+  obs_include_joint_pos: true
+  obs_include_joint_vel: false
+  obs_include_torso_quat: false
+  obs_include_torso_vel: false
+  obs_include_contact: false
+  obs_include_prev_action: false
+  
+  # Termination conditions
+  min_torso_height: 0.05
+  max_torso_tilt: 35  # degrees; lower = less tilt allowed
+  max_flexion_angle: 55  # degrees; max leg lift (flexion)
+
+# Reward function
+reward:
+  # Reward: forward distance traveled (cumulative from episode start)
+  # No weights needed - direct distance reward
+
+# Spiking CPG settings
+scpg:
+  # Network architecture
+  num_legs: 6
+  neurons_per_oscillator: 32
+  hidden_size: 64
+  
+  # LIF neuron parameters
+  tau_mem: 20.0  # Membrane time constant (ms)
+  tau_syn: 10.0  # Synaptic time constant (ms)
+  threshold: 1.0
+  reset: 0.0
+  
+  # Spike encoding
+  encoding_type: "rate"  # "rate" or "latency"
+  num_timesteps: 10  # SNN simulation timesteps per action
+  
+  # CPG parameters
+  oscillator_frequency: 2.0  # Hz
+  phase_coupling_strength: 0.5
+
+# PPO hyperparameters
+ppo:
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  
+  # Policy network (wraps sCPG)
+  policy_kwargs:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+
+# Training settings
+training:
+  total_timesteps: 2000000
+  eval_freq: 10000
+  n_eval_episodes: 5
+  save_freq: 50000
+  log_interval: 10
+  seed: 42
+  
+  # Checkpointing
+  checkpoint_dir: "checkpoints"
+  log_dir: "logs"
+
+# Evaluation settings
+evaluation:
+  num_episodes: 10
+  render: true
+  save_video: true
+  video_dir: "videos"

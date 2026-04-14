@@ -1,0 +1,202 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{parskip}
+
+\geometry{margin=1in}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!10},
+}
+
+\title{Hexapod Multi-Terrain RL: Lab Meeting Report}
+\author{Valero Lab}
+\date{February 2026}
+
+\begin{document}
+\maketitle
+
+\textbf{Project:} Hexapod locomotion with PPO and optional sCPG \\
+\textbf{Focus:} Training on varied terrain (flat, rough, steps) and evaluation pipeline
+
+\vspace{0.5em}
+\hrule
+\vspace{0.5em}
+
+\section{Goal}
+
+\begin{itemize}
+  \item Train a single policy that can walk on \textbf{flat}, \textbf{rough}, and \textbf{stepped} terrain.
+  \item Use the same reward structure and observation space as the existing flat-terrain MLP runs (e.g., mlp\_run\_005) so that improvements are comparable.
+  \item Provide a clear evaluation and visualization pipeline: metrics plus videos with terrain visible and a zoomed-in camera for presentations.
+\end{itemize}
+
+\section{Environment and Terrain}
+
+\subsection{Robot and Base Setup}
+
+\begin{itemize}
+  \item \textbf{Model:} MuJoCo hexapod with 6 legs, PD-controlled joints (abd and flex per leg).
+  \item \textbf{Task:} Circular path following (path\_radius 0.5\,m) with path-heading and path-proximity rewards; velocity and smoothness terms as in \texttt{config\_v7\_mlp\_clean}-style configs.
+  \item \textbf{Episode length:} 1000 steps (frame\_skip 5).
+\end{itemize}
+
+\subsection{Terrain Implementation}
+
+\begin{itemize}
+  \item \textbf{Asset:} \texttt{hexapod\_with\_terrain.xml} --- same robot as \texttt{hexapod.xml}, but the floor is a \textbf{32$\times$32 heightfield} (MuJoCo \texttt{hfield}) so we can change elevation at reset.
+  \item \textbf{Terrain types:}
+  \begin{itemize}
+    \item \textbf{Flat:} Constant zero elevation.
+    \item \textbf{Rough:} Random smooth noise; configurable scale and height range (\texttt{terrain\_rough\_scale}, \texttt{terrain\_rough\_min\_height}, \texttt{terrain\_rough\_max\_height}). Training uses $\pm$2\,cm; evaluation videos use $\pm$6\,cm so the terrain is clearly visible.
+    \item \textbf{Steps:} Stair-like profile along one axis; \texttt{terrain\_step\_height}, \texttt{terrain\_step\_length}, \texttt{terrain\_num\_steps} (e.g., 2\,cm height, 8\,cm length, 5 steps).
+  \end{itemize}
+  \item \textbf{Sampling:} Each episode reset draws a terrain type. With \texttt{terrain\_type: random}, the type is chosen uniformly from \{flat, rough, steps\}. An optional \textbf{terrain curriculum} (flat only, then flat+rough, then all three) can be enabled via config and a training callback.
+\end{itemize}
+
+\subsection{Observation and Rewards}
+
+\begin{itemize}
+  \item Observations include joint positions, joint velocities, contact, phase, previous action, path heading error, and torso velocity (no torso quat in terrain config).
+  \item Rewards: path heading (3.0), path proximity (2.0), target velocity (28.0), smoothness (2.5), jerk (0.35), lateral/yaw/tilt penalties, stance and idle penalties, etc., matching the flat-terrain MLP setup so the policy is incentivized for stable, directed walking on all terrains.
+\end{itemize}
+
+\section{Training Setup}
+
+\begin{itemize}
+  \item \textbf{Config:} \texttt{configs/config\_terrain.yaml}
+  \item \textbf{Algorithm:} PPO (Stable-Baselines3), MLP policy [256, 256] for both policy and value.
+  \item \textbf{Hyperparameters:} 2048 steps per env, batch 64, 10 epochs, LR $3\times10^{-4}$, gamma 0.99, GAE lambda 0.95, clip 0.2.
+  \item \textbf{Training length:} 300k timesteps per run.
+  \item \textbf{Envs:} 2 parallel envs (DummyVecEnv).
+  \item \textbf{Checkpoints:} Every 50k steps; final model saved as \texttt{final\_model.zip}.
+  \item \textbf{Eval during training:} Every 10k steps, 5 episodes (on whatever terrain the env samples).
+\end{itemize}
+
+\section{Runs}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lllll}
+    \toprule
+    Run & Config & Target steps & Status & Notes \\
+    \midrule
+    \textbf{terrain\_run\_001} & config\_terrain.yaml & 300,000 & Complete & 303,104 steps, 302 episodes \\
+    \textbf{terrain\_run\_002} & config\_terrain.yaml & 300,000 & Complete & Same config; second replicate \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{terrain\_run\_001}
+
+\begin{itemize}
+  \item \textbf{Path:} \texttt{runs/terrain\_run\_001/}
+  \item \textbf{Training summary:} total\_timesteps 303,104, total\_episodes 302, mean\_episode\_length 1001.
+  \item \textbf{Checkpoints:} progress at 28k, 57k, 86k, 114k, 143k, 172k, 200k, 229k, 258k, 286k, 303k steps; \texttt{final\_model.zip} available.
+  \item \textbf{Eval outputs:}
+  \begin{itemize}
+    \item \texttt{eval/} --- default eval (metrics + videos if enabled).
+    \item \texttt{eval\_visible\_terrain/} --- same but with terrain heights overridden for visibility (e.g., rough $\pm$6\,cm, steps 5\,cm height) and renderer recreated so the heightfield is shown; videos include a ``Terrain: flat/rough/steps'' overlay.
+  \end{itemize}
+\end{itemize}
+
+\subsection{terrain\_run\_002}
+
+\begin{itemize}
+  \item \textbf{Path:} \texttt{runs/terrain\_run\_002/}
+  \item \textbf{Training summary:} total\_timesteps 303,104, total\_episodes 302, mean\_episode\_length 1001 (same as run\_001).
+  \item \textbf{Eval:} Standard eval in \texttt{eval/}; can generate \texttt{eval\_visible\_terrain} the same way as run\_001.
+\end{itemize}
+
+\section{Evaluation}
+
+\subsection{How evaluation is run}
+
+From project root (\texttt{hexapod\_training\_new}):
+
+\begin{lstlisting}
+python evaluate.py <path_to_model.zip> --config <config.yaml> --output-dir <dir> --num-episodes N --save-video
+\end{lstlisting}
+
+Example for terrain\_run\_001 with visible terrain and videos:
+
+\begin{lstlisting}
+python evaluate.py runs/terrain_run_001/checkpoints/final_model.zip \
+  --config runs/terrain_run_001/config.yaml \
+  --output-dir runs/terrain_run_001/eval_visible_terrain \
+  --num-episodes 6 --save-video
+\end{lstlisting}
+
+\subsection{Terrain cycling for videos}
+
+When the env uses the terrain heightfield, the evaluator cycles terrain per episode: episode 0 $\to$ flat, 1 $\to$ rough, 2 $\to$ steps, 3 $\to$ flat, etc. Each episode's video is labeled (e.g., ``Terrain: rough'') and the ground is overridden so rough/step geometry is visible in the render.
+
+\subsection{Metrics recorded}
+
+\begin{itemize}
+  \item \textbf{Episode-level:} total reward, episode length.
+  \item \textbf{Step-level (aggregated):} mean/max forward velocity, mean torso height, mean energy proxy (sum of squared actions), termination reasons.
+  \item \textbf{Output:} \texttt{evaluation\_summary.yaml} in the output dir (mean\_reward, std\_reward, mean\_length, mean\_forward\_velocity, max\_forward\_velocity, mean\_torso\_height, mean\_energy, num\_episodes, termination\_counts). Exact values depend on run and number of episodes; run the command above to regenerate.
+\end{itemize}
+
+\subsection{Visualization}
+
+\begin{itemize}
+  \item \textbf{Videos:} Step, (x, y), forward distance, forward velocity, and terrain label overlaid on each frame. Saved under \texttt{<output-dir>/videos/} (e.g., \texttt{episode\_1.mp4}).
+  \item \textbf{Trajectory plots:} For each episode, \texttt{episode\_N\_trajectory.png} with (x, y) trajectory and forward distance/velocity vs step.
+  \item \textbf{Camera:} The terrain asset defines an \texttt{eval\_cam} camera (targetbody on torso, close offset, fovy 42$^\circ$) used automatically during \texttt{render()} so evaluation videos are zoomed in for lab meetings.
+\end{itemize}
+
+\subsection{Results snapshot (terrain runs)}
+
+\begin{itemize}
+  \item \textbf{Training:} Both terrain\_run\_001 and terrain\_run\_002 reached $\sim$303k steps with mean episode length 1001 (episodes run to max length; no early termination).
+  \item \textbf{Evaluation:} Summary statistics are written to \texttt{eval/evaluation\_summary.yaml} and \texttt{eval\_visible\_terrain/evaluation\_summary.yaml}. To get a fresh snapshot for the meeting, run the evaluation command above, then read the printed ``EVALUATION SUMMARY'' block or the saved \texttt{evaluation\_summary.yaml}.
+\end{itemize}
+
+\section{Implementation Notes (for reproducibility)}
+
+\begin{itemize}
+  \item \textbf{Terrain in reset:} In \texttt{HexapodEnv.reset()}, when terrain is enabled, we compute heights with \texttt{\_generate\_terrain\_heights(terrain\_kind)}, write to \texttt{model.hfield\_data}, and set \texttt{\_terrain\_changed = True}.
+  \item \textbf{Rendering:} When \texttt{\_terrain\_changed} is True, the next \texttt{render()} call closes and recreates the MuJoCo renderer so the updated heightfield is drawn. The same render path uses \texttt{eval\_cam} when present (terrain XML).
+  \item \textbf{Config:} All terrain-related options (terrain\_type, rough/step parameters, terrain\_curriculum, terrain\_curriculum\_stages) are in \texttt{configs/config\_terrain.yaml} and passed through \texttt{make\_hexapod\_env()}.
+\end{itemize}
+
+\section{Summary for the lab meeting}
+
+\begin{itemize}
+  \item \textbf{What we did:} Added a heightfield-based terrain system (flat / rough / steps) and trained two full runs (terrain\_run\_001, terrain\_run\_002) with 300k steps each. The policy is evaluated across all three terrains with metrics and zoomed-in, terrain-labeled videos.
+  \item \textbf{Where to look:} \texttt{runs/terrain\_run\_001/} and \texttt{runs/terrain\_run\_002/} for training summaries and checkpoints; \texttt{eval\_visible\_terrain/videos/} for presentation-ready clips; \texttt{evaluation\_summary.yaml} in each eval dir for numeric results.
+  \item \textbf{Next steps (optional):} Enable terrain curriculum, tune rough/step difficulty, or compare terrain policy vs flat-only policy on a fixed test set of terrains.
+\end{itemize}
+
+\section{File reference}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{ll}
+    \toprule
+    Item & Path \\
+    \midrule
+    Terrain config & \texttt{configs/config\_terrain.yaml} \\
+    Terrain XML & \texttt{assets/hexapod\_with\_terrain.xml} \\
+    Env + terrain logic & \texttt{envs/hexapod\_env.py} \\
+    Training script & \texttt{train.py} \\
+    Evaluation script & \texttt{evaluate.py} \\
+    Run 001 & \texttt{runs/terrain\_run\_001/} \\
+    Run 002 & \texttt{runs/terrain\_run\_002/} \\
+    This report & \texttt{reports/terrain\_training\_lab\_meeting\_report.md} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\end{document}

@@ -1,0 +1,78 @@
+{
+  "robot_spec": {
+    "servo_mass_kg": 0.009,
+    "servo_count": 12,
+    "chassis_mass_kg": 0.24,
+    "battery_and_electronics_mass_kg": 0.11,
+    "sg90_stall_torque_nm": 0.176,
+    "support_gain_n_per_rad": 32.0,
+    "support_damping_n_per_mps": 7.5,
+    "ground_stiffness_n_per_m": 180.0,
+    "stride_gain_n_per_rad_per_s": 0.34,
+    "contact_sharpness": 5.5,
+    "body_longitudinal_damping_n_per_mps": 6.0,
+    "body_vertical_damping_n_per_mps": 8.0,
+    "roll_damping_nm_per_rad_s": 0.06,
+    "pitch_damping_nm_per_rad_s": 0.07,
+    "roll_inertia_kgm2": 0.0034,
+    "pitch_inertia_kgm2": 0.0048,
+    "torque_proxy_gain_nm_per_rad": 0.058,
+    "total_mass_kg": 0.45799999999999996
+  },
+  "optimized_parameters": {
+    "abd_rest_deg": [
+      10.0,
+      10.0,
+      0.0,
+      0.0,
+      -10.0,
+      -10.0
+    ],
+    "flx_rest_deg": [
+      32.000000026754634,
+      32.000000026754634,
+      33.999999980542086,
+      33.999999980542086,
+      31.99999998216358,
+      31.99999998216358
+    ],
+    "abd_shift_deg": [
+      -9.72895684953641e-08,
+      -9.72895684953641e-08,
+      9.72895684953641e-08,
+      9.72895684953641e-08,
+      -9.72895684953641e-08,
+      -9.72895684953641e-08
+    ],
+    "flx_shift_deg": [
+      -90.00000002432239,
+      -90.00000002432239,
+      -90.00000002432239,
+      -90.00000002432239,
+      -90.00000002432239,
+      -90.00000002432239
+    ],
+    "frequency_hz": 1.799999998864955,
+    "lift_swing_deg_peak": 12.0
+  },
+  "leg_order": [
+    "FL",
+    "FR",
+    "ML",
+    "MR",
+    "RL",
+    "RR"
+  ],
+  "metrics": {
+    "dominant_frequency_hz": 3.537239583333333,
+    "gait_frequency_hz": 1.799999998864955,
+    "mean_forward_speed_mps": 0.233791170659812,
+    "total_displacement_m": 1.863889239424138,
+    "roll_rms_rad": 0.44045061289565335,
+    "pitch_rms_rad": 1.8330787547821574e-17,
+    "z_rms_m": 0.08625636267121062,
+    "peak_servo_usage_ratio": 0.15181440516011757,
+    "contact_balance_std": 0.38759310927035256,
+    "objective_cost": -228.380389659556
+  }
+}
