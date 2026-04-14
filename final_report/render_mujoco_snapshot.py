@@ -5,16 +5,29 @@ from pathlib import Path
 import imageio.v2 as imageio
 import mujoco
 
-# Repo-relative: hexapod_training_new lives next to final presentation under E90/RL Temp/
 _HERE = Path(__file__).resolve().parent
-_DEFAULT_XML = _HERE.parent / "RL Temp" / "hexapod_training_new" / "assets" / "hexapod.xml"
+_ROOT = _HERE.parent
+
+
+def _find_hexapod_xml() -> Path:
+    """Public repo: hexapod_training_new/ at repo root. Local E90 tree: RL Temp/hexapod_training_new/."""
+    candidates = [
+        _ROOT / "hexapod_training_new" / "assets" / "hexapod.xml",
+        _ROOT / "RL Temp" / "hexapod_training_new" / "assets" / "hexapod.xml",
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    raise FileNotFoundError(
+        "hexapod.xml not found. Tried:\n  " + "\n  ".join(str(c) for c in candidates)
+    )
+
+
 _OUT = _HERE / "mujoco_hexapod_sim.png"
 
 
 def main() -> None:
-    xml = Path(_DEFAULT_XML)
-    if not xml.is_file():
-        raise SystemExit(f"Missing MJCF: {xml}")
+    xml = _find_hexapod_xml()
 
     model = mujoco.MjModel.from_xml_path(str(xml))
     data = mujoco.MjData(model)
@@ -34,7 +47,7 @@ def main() -> None:
     img = renderer.render()
     imageio.imwrite(str(_OUT), img)
     renderer.close()
-    print(f"Wrote {_OUT} shape={img.shape}")
+    print(f"Wrote {_OUT} shape={img.shape} (MJCF {xml})")
 
 
 if __name__ == "__main__":

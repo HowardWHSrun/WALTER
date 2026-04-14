@@ -28,7 +28,7 @@ pdflatex E90_Final_Report.tex
 pdflatex E90_Final_Report.tex
 ```
 
-A prebuilt `E90_Final_Report.pdf` is included.
+A prebuilt `E90_Final_Report.pdf` is included. To regenerate the MuJoCo figure `mujoco_hexapod_sim.png`, install `mujoco` and `imageio`, `cd final_report`, and run `python3 render_mujoco_snapshot.py` (expects `../hexapod_training_new/assets/hexapod.xml` in this repository clone).
 
 ## License
 
