@@ -177,7 +177,7 @@ where $H$ is differential entropy for Gaussian policies. Minimizing $\mathcal{L}
 
 \textbf{Status: done.} This track implements Sec.~\ref{sec:math-opt}: the parameterization of $\boldsymbol{\phi}$, sinusoidal \texttt{leg\_commands()}, the eight-state surrogate ODE, the explicit cost~\eqref{eq:surrogate-cost}, box-constrained L-BFGS-B with random restarts, and deterministic export of $\boldsymbol{\phi}^\star$ to firmware. It isolates gait timing and amplitude before closing any sensor loop on hardware.
 
-\textbf{Deliverables.} \texttt{hexapod\_no\_imu\_optimization.py} (L-BFGS-B, constraints, random restarts); \texttt{no\_imu\_optimization\_summary.json}; \texttt{sync\_gait\_params\_from\_json.py}; \texttt{hexapod\_openloop\_sine.ino} with \texttt{optimized\_gait\_params.h}. Results appear in Table~\ref{tab:sim}.
+\textbf{Deliverables.} \texttt{hexapod\_no\_imu\_optimization.py} (L-BFGS-B, constraints, random restarts); \texttt{no\_imu\_optimization\_summary.json}; \texttt{sync\_gait\_params\_from\_json.py}; \texttt{hexapod\_openloop\_sine.ino} with \texttt{optimized\_gait\_params.h}. Surrogate metrics and $\boldsymbol{\phi}^\star$ appear in Tables~\ref{tab:sim}--\ref{tab:opt-params}; the MuJoCo training model is illustrated in Fig.~\ref{fig:mujoco}.
 
 \section{Track II: PPO with IMU-informed observations and preset tripod structure (near complete)}
 \label{sec:track2}
@@ -229,7 +229,7 @@ The intended runtime stack, documented in \texttt{docs/ARCHITECTURE.md}, uses tw
 For the no-IMU milestone, each leg follows resting abduction and flexion angles plus sinusoidal variation at common frequency $f$, with tripod group~B offset by $\pi$ from group~A. This is the same law optimized in Sec.~\ref{sec:math-opt} and delivered in Track~I (Sec.~\ref{sec:track1}). Amplitudes follow default tables shared by Python and \texttt{optimized\_gait\_params.h}.
 
 \subsection{MuJoCo and reinforcement learning (simulation)}
-High-fidelity training uses Gymnasium + MuJoCo~\cite{todorov2012mujoco} with PPO~\cite{schulman2017proximal} as implemented in Stable-Baselines3~\cite{raffin2021stable}; the mathematical objective is Eq.~\eqref{eq:ppo-clip} with advantages~\eqref{eq:gae}. Tracks~II--III (Sec.~\ref{sec:track2}--\ref{sec:track3}) specialize the observation and reward; YAML configs set $\gamma$, $\lambda$, learning rate, network widths, PD gains, and terrain.
+High-fidelity training uses Gymnasium + MuJoCo~\cite{todorov2012mujoco} with PPO~\cite{schulman2017proximal} as implemented in Stable-Baselines3~\cite{raffin2021stable}; the mathematical objective is Eq.~\eqref{eq:ppo-clip} with advantages~\eqref{eq:gae}. Tracks~II--III (Sec.~\ref{sec:track2}--\ref{sec:track3}) specialize the observation and reward; YAML configs set $\gamma$, $\lambda$, learning rate, network widths, PD gains, and terrain. A representative static render of the simulation model appears in Fig.~\ref{fig:mujoco} (Sec.~\ref{sec:res-mujoco}).
 
 \subsection{Mechanical design: CAD and 3D-printed parts}
 \label{sec:mech}
@@ -420,10 +420,45 @@ Table~\ref{tab:sim} summarizes \texttt{hexapod\_brain\_roadmap copy/ode\_optimiz
     Vertical position RMS & 0.086\,m \\
     Peak servo usage ratio (proxy) & 0.152 \\
     Contact balance std.\ dev. & 0.388 \\
-    Objective cost & $-228.38$ \\
+    Dominant oscillation frequency (estimated) & 3.54\,Hz \\
+    Objective cost $\mathcal{J}(\boldsymbol{\phi}^\star)$ & $-228.38$ \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+Table~\ref{tab:opt-params} lists the corresponding optimized parameter vector $\boldsymbol{\phi}^\star$ (rest angles, phase shifts, frequency, and swing lift) exported to \texttt{optimized\_gait\_params.h}. Flexion phase shifts sit at the lower bound ($-90^\circ$), trading stride phasing for the surrogate's forward-speed and regularization terms; hardware tuning may move off that bound.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Optimized decision variables $\boldsymbol{\phi}^\star$ from L-BFGS-B (same JSON as Table~\ref{tab:sim}). Angles in degrees; leg order FL, FR, ML, MR, RL, RR.}
+  \label{tab:opt-params}
+  \footnotesize
+  \setlength{\tabcolsep}{6pt}
+  \begin{tabular}{@{}p{3.5cm}p{9.2cm}@{}}
+    \toprule
+    Quantity & Value \\
+    \midrule
+    Gait frequency $f$ & 1.800\,Hz \\
+    Abduction rest $\boldsymbol{\theta}_{\mathrm{abd,rest}}$ & $(10,\,10,\,0,\,0,\,-10,\,-10)$ \\
+    Flexion rest $\boldsymbol{\theta}_{\mathrm{flx,rest}}$ & $(32.00,\,32.00,\,34.00,\,34.00,\,32.00,\,32.00)$ \\
+    Abduction phase $\boldsymbol{\delta}_{\mathrm{abd}}$ & $\approx \mathbf{0}$ (magnitude $<10^{-6}$\,deg) \\
+    Flexion phase $\boldsymbol{\delta}_{\mathrm{flx}}$ & $(-90,\,-90,\,-90,\,-90,\,-90,\,-90)$ \\
+    Swing lift amplitude & 12.0\,deg (\texttt{lift\_swing\_deg\_peak}) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\normalsize
+
+\subsection{MuJoCo simulation (high-fidelity model)}
+\label{sec:res-mujoco}
+Track~II--III training uses Gymnasium with the MuJoCo asset \texttt{hexapod\_training\_new/assets/hexapod.xml}: checkerboard ground, twelve torque-controlled joints, and RK4 integration at 0.002\,s (see configs for frame skipping). Figure~\ref{fig:mujoco} is an \textbf{offscreen MuJoCo render} (software \texttt{Renderer}, no interactive viewer): the model was advanced under gravity with zero actuator commands until the body settled on the plane, then a fixed camera was used. The view documents the mesh, materials, and lighting used for PPO rollouts; it is not a policy-controlled frame. Interactive inspection is available via \texttt{scripts/live\_mujoco\_viewer.py} with a trained checkpoint.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\linewidth]{mujoco_hexapod_sim.png}
+  \caption{MuJoCo screenshot of the Walter hexapod model used for PPO training and evaluation (post-settle, zero control; offscreen render).}
+  \label{fig:mujoco}
+\end{figure}
 
 \subsection{MuJoCo PPO evaluations (released checkpoints)}
 Table~\ref{tab:rl-eval} quotes short evaluation protocols documented in \texttt{e90\_repo/released\_checkpoints/evaluations/}. Rewards are \textbf{not} comparable across configs (different shaping and scaling); forward displacement and path length provide a common physical readout within each experiment family.
@@ -482,7 +517,7 @@ The public project URL is \url{https://github.com/HowardWHSrun/WALTER}. Appendix
   \item \textbf{MuJoCo PPO training:} \texttt{RL Temp/hexapod\_training\_new/} (\texttt{train.py}, \texttt{configs/}, \texttt{runs/})
   \item \textbf{Released checkpoints and evals:} \texttt{RL Temp/e90\_repo/released\_checkpoints/}
   \item \textbf{Presentation notes:} \texttt{Presentation/E90\_MidSemester\_SpeakerScript.tex} (and PDF)
-  \item \textbf{This folder (figures):} \texttt{walter\_assembly.png}, \texttt{Body.png}, \texttt{Legs.png}, \texttt{Linkage.png}, \texttt{pcb\_board.png}, \texttt{pcb\_schematic.png} (plus originals with longer filenames)
+  \item \textbf{This folder (figures):} \texttt{walter\_assembly.png}, \texttt{Body.png}, \texttt{Legs.png}, \texttt{Linkage.png}, \texttt{pcb\_board.png}, \texttt{pcb\_schematic.png}, \texttt{mujoco\_hexapod\_sim.png} (plus originals with longer filenames)
 \end{itemize}
 
 \end{document}
