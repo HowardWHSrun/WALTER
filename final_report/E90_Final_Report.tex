@@ -11,6 +11,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{booktabs}
+\usepackage{tabularx}
 \usepackage{graphicx}
 \usepackage{caption}
 \usepackage{subcaption}
@@ -461,21 +462,23 @@ Track~II--III training uses Gymnasium with the MuJoCo asset \texttt{hexapod\_tra
 \end{figure}
 
 \subsection{MuJoCo PPO evaluations (released checkpoints)}
-Table~\ref{tab:rl-eval} quotes short evaluation protocols documented in \texttt{e90\_repo/released\_checkpoints/evaluations/}. Rewards are \textbf{not} comparable across configs (different shaping and scaling); forward displacement and path length provide a common physical readout within each experiment family.
+Table~\ref{tab:rl-eval} quotes short evaluation protocols documented under \url{e90_repo/released_checkpoints/evaluations/}. Rewards are \textbf{not} comparable across configs (different shaping and scaling); forward displacement and path length provide a common physical readout within each experiment family.
 
 \begin{table}[htbp]
   \centering
   \caption{Representative PPO evaluation means (300 env steps per episode unless noted; see each REPORT.md).}
   \label{tab:rl-eval}
   \footnotesize
-  \begin{tabular}{@{}p{3.4cm}p{3.6cm}rrr@{}}
+  \setlength{\tabcolsep}{5pt}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.35cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{1.35cm} >{\raggedright\arraybackslash}p{1.35cm} >{\raggedright\arraybackslash}X@{}}
     \toprule
-    Checkpoint / run & Task / policy & Fwd.\ +$x$ & 2D path len. & Notes \\
+    Checkpoint & Task / policy & Fwd.\,$+x$ & 2D path & Notes \\
     \midrule
-    \texttt{mlp\_clean\_run005\_best} & Circle path; MLP 256$\times$256 PPO; \texttt{mlp\_run\_005} (301k steps) & 0.18\,m & 0.27\,m & Mean reward $\approx6800$ \\
-    \texttt{terrain\_low\_shake\_run001\_best} & Flat / rough / steps; MLP PPO & 0.33\,m mean over 3 ep. & --- & Flat/rough $\approx$0.47\,m fwd.; steps harder \\
+    \url{mlp_clean_run005_best} & Circle path; MLP $256\!\times\!256$ PPO; training run \texttt{mlp\_run\_005} (301k steps). & 0.18\,m & 0.27\,m & Mean reward $\approx 6800$. \\
+    \url{terrain_low_shake_run001_best} & Flat, rough, and step terrain; MLP PPO. & 0.33\,m (3 ep.\ mean) & --- & Flat/rough $\approx 0.47$\,m forward; steps harder. \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 \normalsize
 
