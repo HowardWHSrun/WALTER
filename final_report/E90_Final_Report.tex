@@ -57,11 +57,16 @@ The physical system is \emph{Walter}, a twelve-DOF hexapod with 3D-printed struc
 \section{Mathematical background: optimization and reinforcement learning}
 \label{sec:math-bg}
 
+The capstone uses two complementary mathematical ideas. Offline gait optimization answers: \emph{which} interpretable, periodic joint law moves the body forward without unacceptable rocking, bouncing, or apparent actuator loading, when feedback is not yet in the loop? Reinforcement learning in simulation answers a different question: can a \emph{state-conditioned} policy improve locomotion or robustness when the agent senses proprioception, base motion, and (in some configs) IMU channels, under a task-specific reward? Both stem from the same bio-inspired picture---a tripod rhythm as a prior, with room for richer feedback later---but the first searches over a small open-loop parameter vector on a fast surrogate; the second searches over neural policy parameters inside MuJoCo.
+
 \subsection{Reduced-order gait optimization (Track~1)}
 \label{sec:math-opt}
 
+\paragraph{Problem and modeling choice.}
+Walter has twelve actuated joints; the space of conceivable gait waveforms is enormous, and hand tuning is slow. We restrict attention to a \emph{compact} alternating-tripod sinusoidal law: resting abduction and flexion per leg, per-leg phase shifts, a common stride frequency, and fixed swing-lift structure. That choice mirrors a biological design pattern---encode locomotion with a low-dimensional rhythm before adding sensory correction---and matches what the open-loop firmware can execute, so optimized parameters transfer directly to C. The remaining design question is purely quantitative: find $\boldsymbol{\phi}$ in a feasible box that yields good forward motion in a \emph{reduced-order} planar model. Full MuJoCo rollouts could in principle score each $\boldsymbol{\phi}$, but the surrogate integrates an eight-state body + leg coupling quickly enough for many L-BFGS-B iterations and random restarts, which supports systematic search rather than one-off hand edits. The scalar cost $\mathcal{J}(\boldsymbol{\phi})$ below turns informal goals (move forward, stay comparatively smooth, avoid extreme loading proxies, stay near defaults) into a single objective for the optimizer.
+
 \subsubsection{Decision variables and bounds}
-The optimizer acts on a vector $\boldsymbol{\phi}\in\mathbb{R}^{25}$ matching \texttt{hexapod\_no\_imu\_optimization.py}. Indices are concatenated as
+With that parameterization, the optimizer acts on $\boldsymbol{\phi}\in\mathbb{R}^{25}$ matching \texttt{hexapod\_no\_imu\_optimization.py}. Indices are concatenated as
 \begin{equation}
   \boldsymbol{\phi} =
   \bigl(
@@ -115,7 +120,7 @@ Let a subscript ``ss'' denote statistics evaluated on a \emph{steady-state} suff
   \end{aligned}
   \label{eq:surrogate-cost}
 \end{equation}
-where $\boldsymbol{\phi}_{0}$ is the default parameter vector and $\|\cdot\|_{\mathrm{scaled}}$ averages coordinatewise squared normalized deviation from the box midpoint (Tikhonov-style regularization keeping $\boldsymbol{\phi}$ in a ``reasonable'' neighborhood). Optional terms penalize shortfall below a target mean speed if \texttt{target\_forward\_speed\_mps}${}>0$. Infeasible simulations return a large penalty ($10^6$). \textbf{Design intent:} the weighted sum prioritizes forward progress while penalizing backward drift, attitude and vertical oscillation, actuator overload proxies, uneven leg loading, and deviation from nominal $\boldsymbol{\phi}_{0}$---a deliberate trade that can admit energetic gaits with visible body motion in the surrogate.
+where $\boldsymbol{\phi}_{0}$ is the default parameter vector and $\|\cdot\|_{\mathrm{scaled}}$ averages coordinatewise squared normalized deviation from the box midpoint (Tikhonov-style regularization keeping $\boldsymbol{\phi}$ in a ``reasonable'' neighborhood). Optional terms penalize shortfall below a target mean speed if \texttt{target\_forward\_speed\_mps}${}>0$. Infeasible simulations return a large penalty ($10^6$). The weighted sum encodes the trade discussed above: prioritize forward progress while penalizing backward drift, attitude and vertical oscillation, actuator overload proxies, uneven leg loading, and deviation from nominal $\boldsymbol{\phi}_{0}$, which can admit energetic gaits with visible body motion in the surrogate.
 
 \subsubsection{Optimization algorithm and restarts}
 The problem solved in software is
@@ -130,7 +135,11 @@ The \textbf{code path} from optimization to firmware is deterministic: $\boldsym
 
 \subsection{Policy optimization in MuJoCo (PPO with GAE)}
 \label{sec:math-ppo}
-Legged RL is cast as an MDP with MuJoCo supplying transitions; we use actor--critic PPO as implemented in Stable-Baselines3~\cite{raffin2021stable}. \textbf{Generalized advantage estimation} (GAE)~\cite{schulman2017proximal} builds advantages from TD residuals $\delta_t = r_t + \gamma V_\psi(s_{t+1}) - V_\psi(s_t)$:
+
+\paragraph{Problem and modeling choice.}
+Open-loop $\boldsymbol{\phi}^\star$ from the surrogate is a single time-varying schedule: it cannot react to unexpected contact or tilt. For behaviors that depend on \emph{current} state, we optimize a policy $\pi_\theta(a\mid s)$ in MuJoCo. The objective is standard: maximize expected discounted return $\mathbb{E}[\sum_t \gamma^t r_t]$ under transition dynamics from the simulator and a user-defined reward that encodes forward progress, stability penalties, control cost, and task structure (paths, terrain, etc.). The thinking is to let the agent \emph{adapt} torques to observations---including IMU-related channels when configured---so performance is not locked to one precomputed waveform. That comes at the cost of sample complexity, sim-to-real gap, and opaque policy weights compared to the explicit $\boldsymbol{\phi}$ vector; the math below is the PPO/GAE machinery Stable-Baselines3 uses to optimize $\theta$ stably.
+
+Legged RL is cast as an MDP with MuJoCo supplying transitions; we use actor--critic PPO as implemented in Stable-Baselines3~\cite{raffin2021stable}. Generalized advantage estimation (GAE)~\cite{schulman2017proximal} builds advantages from TD residuals $\delta_t = r_t + \gamma V_\psi(s_{t+1}) - V_\psi(s_t)$:
 \begin{equation}
   \hat{A}_t = \sum_{\ell=0}^{\infty}(\gamma\lambda)^\ell\,\delta_{t+\ell},
   \label{eq:gae}
