@@ -37,20 +37,20 @@
 \maketitle
 
 \begin{abstract}
-This report summarizes an Engineering~90 capstone on \emph{Walter}, our twelve-degree-of-freedom hexapod (\textbf{W}alking \textbf{A}lternating \textbf{T}ripod for \textbf{E}volutionary \textbf{R}esearch). The mechanical structure uses \textbf{CAD-designed, 3D-printed} body, leg, and linkage parts assembled with hobby servos. Electronics include a Teensy~4.1, Pololu eighteen-channel servo controller (Maestro family), SparkFun BMI270 IMU, regulated power, and three iterations of custom \emph{Hexapod V2} PCBs. \textbf{Proposed work} combined layered, bio-inspired control---tripod locomotion, IMU-driven reflexes, and slow on-device adaptation---with offline gait optimization and reinforcement learning in simulation. \textbf{Benefits} include interpretable gaits, repeatable artifacts, safety-aware command bounds, and policies trained without hand-written joint trajectories. \textbf{Accomplished:} open-loop optimization to firmware (\texttt{hexapod\_openloop\_sine}); discrete tripod baseline (\texttt{hexapod\_walking\_v2}); MuJoCo~\cite{todorov2012mujoco} PPO~\cite{schulman2017proximal} via Stable-Baselines3~\cite{raffin2021stable} with released evaluations. \textbf{Requirements} (\texttt{PHASES.md}) are \textbf{partially met:} hardware, CAD/mechanical documentation in this report, open-loop optimization, and RL-in-simulation are evidenced; Phase~1--4 adaptive IMU firmware paths are largely absent from the tree. Source materials are maintained at \url{https://github.com/HowardWHSrun/WALTER}. \textbf{Cost:} electronics (three BOMs) US\$595.20; three PCB orders US\$197.47; \textbf{grand total US\$792.67} (one PCB order awaited payment at writing). Filament and fasteners are outside this sum.
+\emph{Walter} (\textbf{W}alking \textbf{A}lternating \textbf{T}ripod for \textbf{E}volutionary \textbf{R}esearch) is a twelve-degree-of-freedom hexapod built for this Engineering~90 capstone. The team fabricated a \textbf{complete hardware platform}: CAD-designed, 3D-printed body, legs, and linkages; hobby servos; Teensy~4.1 and Pololu eighteen-channel driver; SparkFun BMI270 IMU; power regulation; and three iterations of custom \emph{Hexapod V2} PCBs. On the control side, the project \textbf{completed two development tracks}: (i)~open-loop gait optimization in a reduced-order model with deterministic export to firmware (\texttt{hexapod\_openloop\_sine}), and (ii)~a MuJoCo~\cite{todorov2012mujoco} PPO~\cite{schulman2017proximal} training and evaluation pipeline (Stable-Baselines3~\cite{raffin2021stable}) with stored checkpoints, configs, and short evaluation summaries for representative locomotion experiments. Sec.~\ref{sec:results} summarizes surrogate metrics, exported gait parameters, a MuJoCo model view, and sample PPO evaluation means. The team \textbf{did not} implement the full layered adaptive firmware described in internal phase requirements (IMU-closed-loop reflexes and online adaptation on the MCU); that stack remains \textbf{design groundwork} for future work. Overall, the capstone establishes a \textbf{reproducible hexapod platform} and defensible optimization-to-firmware and simulation-based RL workflows; materials are at \url{https://github.com/HowardWHSrun/WALTER}. \textbf{Purchased cost:} electronics (three BOMs) US\$595.20; three PCB orders US\$197.47; \textbf{grand total US\$792.67} (one PCB order awaited payment at writing). Filament and fasteners are outside this sum.
 \end{abstract}
 
 \section{Introduction}
 
-Reliable legged locomotion requires coordinating periodic limb motion with feedback under limited sensing and computation. Biological systems, in particular insects, organize locomotor control in \emph{layers} that are by now standard in the comparative and robotics literature: central pattern generators (CPGs) and inter-leg coordination establish a rhythmic substrate; fast mechanosensory and proprioceptive loops modulate timing and force in response to body perturbations; and slower processes adjust parameters over behavioral time scales~\cite{aydin2023mechanosensory,chen2021adaptive}. This project treats that decomposition not as metaphor but as a \textbf{design principle}: each major engineering choice on \emph{Walter} was selected to preserve an explicit correspondence to this biological organization, so that hardware, firmware, and learning algorithms remain interpretable as implementations of the same layered story.
+Reliable legged locomotion requires coordinating periodic limb motion with feedback under limited sensing and computation. Insects organize locomotor control in \emph{layers} that are standard in the literature: rhythmic coordination (often modeled as CPG-like structure), fast sensory feedback, and slower parameter adjustment~\cite{aydin2023mechanosensory,chen2021adaptive}. This capstone uses that organization as \textbf{bio-inspired control motivation}, not as a claim that every layer is already running on hardware.
 
-\textbf{Bio-inspired correspondences.} The \textbf{alternating tripod} gait used on the platform parallels the phase relationships observed in fast hexapedal locomotion: a fixed alternation of stance groups provides a stable, low-dimensional rhythmic prior before any learning is applied. \textbf{Inertial sensing} (a six-axis IMU fused for roll, pitch, and body rates) stands in for the distributed mechanoreception and body-state estimation that insects use to stabilize posture and trigger reflexive adjustments; fusion emphasizes roll and pitch over unreliable magnetic heading, consistent with how legged systems exploit gravito-inertial cues on structured terrain~\cite{valenti2015quaternion,bai2019posture}. The intended \textbf{fast} control tick (filtering, stability scoring, reflexive modulation of stride variables) and \textbf{slow} tick (windowed costs, optional parameter adaptation) mirror the separation between millisecond-scale corrective reflexes and slower tuning of gait parameters documented in adaptive locomotion models~\cite{chen2021adaptive}. \textbf{Reinforcement learning in simulation} (PPO in MuJoCo) is used not to replace that hierarchy but to explore high-dimensional dynamics and shaped rewards while structured policies and phase cues retain a CPG-like inductive bias. \textbf{Optimization of a compact open-loop gait law} prior to closing sensor loops follows the same logic: isolate an interpretable rhythmic generator, then add sensory correction, analogous to decoupling pattern generation from sensory modulation in biological models.
+\textbf{Framing of contributions.} The strongest completed work is \textbf{platform and methods}: a reproducible hexapod with CAD and custom PCBs; an \textbf{open-loop} gait optimization loop that exports parameters to firmware; and a \textbf{MuJoCo PPO} training and evaluation workflow with stored checkpoints and configs. A \textbf{layered adaptive} architecture (IMU fusion, reflexes, slow adaptation) is \textbf{specified in design documents} and informs observation choices in simulation, but it is \textbf{not fully implemented} on the MCU. The report therefore emphasizes what was built and verified, and treats full adaptive locomotion on the robot as \textbf{future engineering}, not an accomplishment of this submission.
 
-\textbf{Platform and scope.} The physical system is \emph{Walter}, a twelve-degree-of-freedom hexapod (\textsc{Walter}: \textbf{W}alking \textbf{A}lternating \textbf{T}ripod for \textbf{E}volutionary \textbf{R}esearch). The chassis and leg mechanisms are CAD-designed, additively manufactured, and integrated with commodity servos and a custom \emph{Hexapod V2} printed circuit board (Sec.~\ref{sec:mech}--\ref{sec:elec}). The target software architecture described in the project documentation specifies tripod-based gait generation, complementary-filter attitude estimation, stability scoring, reflexive modulation of gait variables, and optional slow adaptation of a low-dimensional parameter vector with nonvolatile storage; Sec.~\ref{sec:track1}--\ref{sec:track3} report the degree to which each layer is realized in the current repository.
+\textbf{Bio-inspired elements (precise).} The \textbf{alternating tripod} is a biologically motivated low-dimensional gait prior: two stance groups alternate before any learning is applied. \textbf{IMU-based body-state cues} (roll, pitch, rates) match how many legged systems use gravito-inertial information for posture~\cite{valenti2015quaternion,bai2019posture} and align the simulation observation stack with how \emph{Walter} is instrumented, which matters for eventual sim-to-real. \textbf{Reinforcement learning in MuJoCo} explores dynamics and reward shaping under that prior; it does not, by itself, close the hardware adaptive loop. \textbf{Surrogate optimization} of a compact sinusoidal law isolates an interpretable rhythm before sensor-heavy layers are added---consistent with separating pattern generation from feedback in many biological models~\cite{chen2021adaptive}, but realized here only through open-loop firmware.
 
-\textbf{Repository.} Source materials, including firmware, simulation code, and documentation, are maintained at \url{https://github.com/HowardWHSrun/WALTER}.
+\textbf{Platform.} The physical system is \emph{Walter}, a twelve-DOF hexapod with 3D-printed structure, servos, Teensy, driver, IMU, and \emph{Hexapod V2} PCBs (Sec.~\ref{sec:mech}--\ref{sec:elec}).
 
-\textbf{Organization of the technical work.} Development proceeds along \textbf{three tracks} (Sec.~\ref{sec:track1}--\ref{sec:track3}): \textbf{(1)}~surrogate gait optimization with deterministic export to embedded open-loop code (\emph{complete}); \textbf{(2)}~proximal policy optimization in MuJoCo with IMU-inclusive observations and tripod-structured or preset gait priors (\emph{near complete} in simulation); and \textbf{(3)}~extension of that stack with visual state for distance-aware rewards (\emph{not yet implemented}). Sec.~\ref{sec:math-bg} develops the optimization and reinforcement-learning formalism shared across these tracks.
+\textbf{Code and report organization.} Source code and this document are maintained at \url{https://github.com/HowardWHSrun/WALTER}. Sec.~\ref{sec:math-bg} states the optimization objective and the PPO machinery used in software. Sec.~\ref{sec:track1}--\ref{sec:track3} and Table~\ref{tab:tracks} summarize three tracks: \textbf{(1)}~surrogate optimization to firmware (\textbf{completed}); \textbf{(2)}~PPO locomotion in simulation, with IMU-capable observation modes where configured (\textbf{completed} as a training/evaluation stack; limited hardware deployment); \textbf{(3)}~vision-augmented distance objectives (\textbf{future work}).
 
 \section{Mathematical background: optimization and reinforcement learning}
 \label{sec:math-bg}
@@ -113,7 +113,7 @@ Let a subscript ``ss'' denote statistics evaluated on a \emph{steady-state} suff
   \end{aligned}
   \label{eq:surrogate-cost}
 \end{equation}
-where $\boldsymbol{\phi}_{0}$ is the default parameter vector and $\|\cdot\|_{\mathrm{scaled}}$ averages coordinatewise squared normalized deviation from the box midpoint (Tikhonov-style regularization keeping $\boldsymbol{\phi}$ in a ``reasonable'' neighborhood). Optional terms penalize shortfall below a target mean speed if \texttt{target\_forward\_speed\_mps}${}>0$. Infeasible simulations return a large penalty ($10^6$). Equation~\eqref{eq:surrogate-cost} is the precise surrogate counterpart of the abstract sum $\sum_k w_k c_k$ used earlier: here each $c_k$ is spelled out.
+where $\boldsymbol{\phi}_{0}$ is the default parameter vector and $\|\cdot\|_{\mathrm{scaled}}$ averages coordinatewise squared normalized deviation from the box midpoint (Tikhonov-style regularization keeping $\boldsymbol{\phi}$ in a ``reasonable'' neighborhood). Optional terms penalize shortfall below a target mean speed if \texttt{target\_forward\_speed\_mps}${}>0$. Infeasible simulations return a large penalty ($10^6$). \textbf{Design intent:} the weighted sum prioritizes forward progress while penalizing backward drift, attitude and vertical oscillation, actuator overload proxies, uneven leg loading, and deviation from nominal $\boldsymbol{\phi}_{0}$---a deliberate trade that can admit energetic gaits with visible body motion in the surrogate.
 
 \subsubsection{Optimization algorithm and restarts}
 The problem solved in software is
@@ -126,27 +126,14 @@ The problem solved in software is
 
 The \textbf{code path} from optimization to firmware is deterministic: $\boldsymbol{\phi}^\star$ is serialized to \texttt{no\_imu\_optimization\_summary.json}; \texttt{sync\_gait\_params\_from\_json.py} emits \texttt{optimized\_gait\_params.h}; \texttt{hexapod\_openloop\_sine.ino} evaluates the same \texttt{leg\_commands()} map, applies bench degree-to-pulse gains and clamps, and streams servo targets. Thus optimization-to-code is \emph{algebraic parity}, not a learned policy.
 
-\subsection{Markov decision processes and returns}
-\label{sec:math-mdp}
-Reinforcement learning treats legged control as a \textbf{Markov decision process} (MDP) $(\mathcal{S},\mathcal{A},P,r,\gamma)$: states $s\in\mathcal{S}$, actions $a\in\mathcal{A}$, transition density $P(s'|s,a)$ from the simulator (MuJoCo), reward $r(s,a)$, and discount $\gamma\in(0,1)$. A stochastic policy $\pi_\theta(a|s)$ with parameters $\theta$ induces trajectories $\tau=(s_0,a_0,r_0,\ldots)$. The \textbf{return} from time $t$ is the discounted sum $G_t=\sum_{k=0}^{\infty}\gamma^k r_{t+k}$. The \textbf{state-value} and \textbf{action-value} functions under $\pi_\theta$ are
-\begin{equation}
-  V^{\pi_\theta}(s)=\mathbb{E}[G_t\mid s_t=s],\qquad
-  Q^{\pi_\theta}(s,a)=\mathbb{E}[G_t\mid s_t=s,a_t=a].
-\end{equation}
-The \textbf{advantage} $A^{\pi_\theta}(s,a)=Q^{\pi_\theta}(s,a)-V^{\pi_\theta}(s)$ measures how much better action $a$ is than the policy average in state $s$. Policy-search methods estimate gradients of the expected return $\eta(\theta)=\mathbb{E}[G_0]$; the \textbf{policy gradient theorem} motivates updates proportional to $\nabla_\theta \log\pi_\theta(a|s)\,A(s,a)$, but raw Monte Carlo estimates have high variance.
-
-\subsection{Generalized advantage estimation (GAE) and the value baseline}
-\label{sec:math-gae}
-Practical actor--critic algorithms maintain a \textbf{critic} $V_\psi(s)\approx V^{\pi_\theta}(s)$ with parameters $\psi$. One-step \textbf{TD residuals} are $\delta_t = r_t + \gamma V_\psi(s_{t+1}) - V_\psi(s_t)$. \textbf{Generalized advantage estimation} (GAE) combines multi-step returns with an exponential weighting by $\lambda\in[0,1]$ (see Schulman \emph{et al.}\ on GAE; used inside SB3's PPO~\cite{schulman2017proximal,raffin2021stable}):
+\subsection{Policy optimization in MuJoCo (PPO with GAE)}
+\label{sec:math-ppo}
+Legged RL is cast as an MDP with MuJoCo supplying transitions; we use actor--critic PPO as implemented in Stable-Baselines3~\cite{raffin2021stable}. \textbf{Generalized advantage estimation} (GAE)~\cite{schulman2017proximal} builds advantages from TD residuals $\delta_t = r_t + \gamma V_\psi(s_{t+1}) - V_\psi(s_t)$:
 \begin{equation}
   \hat{A}_t = \sum_{\ell=0}^{\infty}(\gamma\lambda)^\ell\,\delta_{t+\ell},
   \label{eq:gae}
 \end{equation}
-which trades bias (relying on $V_\psi$) against variance (longer rollouts). Stable-Baselines3 uses this form when \texttt{gae\_lambda} is set in the PPO configuration.
-
-\subsection{Proximal policy optimization (PPO)}
-\label{sec:math-ppo}
-\textbf{PPO}~\cite{schulman2017proximal} stabilizes policy updates by limiting how far $\theta$ moves from the behavior policy $\theta_{\mathrm{old}}$ that collected the batch. Define the \textbf{probability ratio}
+with $\lambda$ and discount $\gamma$ set in YAML. \textbf{PPO}~\cite{schulman2017proximal} stabilizes updates via a clipped ratio between the new and behavior policy. Define the \textbf{probability ratio}
 \begin{equation}
   r_t(\theta)=\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_{\mathrm{old}}}(a_t\mid s_t)}.
 \end{equation}
@@ -173,30 +160,30 @@ Let $\hat{R}_t$ denote a target return for the critic (e.g., $n$-step return or 
 \end{equation}
 where $H$ is differential entropy for Gaussian policies. Minimizing $\mathcal{L}_{\mathrm{total}}$ corresponds to ascending $\mathcal{L}^{\mathrm{CLIP}}$ while fitting the critic and discouraging collapse of exploratory variance. Updates use minibatches over several epochs on each rollout buffer; hyperparameters (learning rate, rollout length \texttt{n\_steps}, batch size, $\gamma$, $\lambda$, $\epsilon$, $c_v$, $c_e$) are set in YAML under \texttt{hexapod\_training\_new/configs/}.
 
-\section{Track I: Surrogate optimization and firmware translation (complete)}
+\section{Track I: Surrogate optimization and firmware export}
 \label{sec:track1}
 
-\textbf{Status: done.} This track implements Sec.~\ref{sec:math-opt}: the parameterization of $\boldsymbol{\phi}$, sinusoidal \texttt{leg\_commands()}, the eight-state surrogate ODE, the explicit cost~\eqref{eq:surrogate-cost}, box-constrained L-BFGS-B with random restarts, and deterministic export of $\boldsymbol{\phi}^\star$ to firmware. It isolates gait timing and amplitude before closing any sensor loop on hardware.
+This track \textbf{implements} Sec.~\ref{sec:math-opt}: the $\boldsymbol{\phi}$ parameterization, sinusoidal \texttt{leg\_commands()}, the eight-state surrogate, cost~\eqref{eq:surrogate-cost}, box-constrained L-BFGS-B with restarts, and a \textbf{deterministic path} from $\boldsymbol{\phi}^\star$ to C headers and \texttt{hexapod\_openloop\_sine}. The workflow isolates a tunable open-loop rhythm before IMU-closed-loop layers are required.
 
-\textbf{Deliverables.} \texttt{hexapod\_no\_imu\_optimization.py} (L-BFGS-B, constraints, random restarts); \texttt{no\_imu\_optimization\_summary.json}; \texttt{sync\_gait\_params\_from\_json.py}; \texttt{hexapod\_openloop\_sine.ino} with \texttt{optimized\_gait\_params.h}. Surrogate metrics and $\boldsymbol{\phi}^\star$ appear in Tables~\ref{tab:sim}--\ref{tab:opt-params}; the MuJoCo training model is illustrated in Fig.~\ref{fig:mujoco}.
+\textbf{What we shipped.} Optimizer script, summary JSON, JSON-to-header sync, and open-loop Arduino sketch with exported gains. Quantitative surrogate outputs appear in Tables~\ref{tab:sim}--\ref{tab:opt-params}; the high-fidelity MuJoCo asset used for RL appears in Fig.~\ref{fig:mujoco}.
 
-\section{Track II: PPO with IMU-informed observations and preset tripod structure (near complete)}
+\section{Track II: PPO locomotion in MuJoCo}
 \label{sec:track2}
 
-\textbf{Status: near complete (simulation and training stack; hardware deployment partial).} Here the policy is $\pi_\theta(a|s)$ with $s$ containing \textbf{proprioception} (joint positions and velocities), \textbf{base kinematics} from the simulator, and---in IMU-focused configs---accelerometer and gyroscope readings (or their low-pass / complementary-filter equivalents) so that roll, pitch, and body rates enter the observation stack, matching the intended Walter firmware sensing. The \textbf{preset tripod structure} is enforced by one or more of: (i)~a fixed gait clock or phase features in $s$; (ii)~structured policies (e.g., sCPG or phase-parameterized heads) that bias action toward tripod alternation; or (iii)~reward terms that penalize deviation from productive tripod coordination. PPO updates $\theta$ using Eqs.~\eqref{eq:gae}--\eqref{eq:ppo-clip} on MuJoCo rollouts.
+The policy $\pi_\theta(a|s)$ conditions on \textbf{proprioception} (joint positions and velocities), simulator \textbf{base kinematics}, and---in IMU-focused YAML configs---\textbf{accelerometer and gyroscope} channels (or complementary-filter-style stacks) so roll, pitch, and body rates align with how \emph{Walter} is sensed on hardware. \textbf{Tripod structure} enters through phase features, structured policy heads (e.g., sCPG variants), or reward shaping, depending on the experiment. Training uses Eqs.~\eqref{eq:gae}--\eqref{eq:ppo-clip} on MuJoCo rollouts.
 
-\textbf{Relation to mathematics.} The environment implements $P$ and $r$; the agent maximizes $\eta(\theta)$ subject to PPO's trust-region-like clipping. IMU channels shrink the \emph{partial observability} gap between simulation and the physical BMI270 stack; training runs such as \texttt{imu6\_001} / \texttt{imu\_bno10\_001} in \texttt{hexapod\_training\_new/runs/} document this observation mode. Released evaluations (Table~\ref{tab:rl-eval}) remain predominantly proprioceptive / path-following; extending hardware parity for Track~II requires flashing a policy or residual layer while the Maestro executes tripod-compatible targets.
+\textbf{Scope.} The team \textbf{built, trained, and evaluated} policies in simulation, archived checkpoints, and wrote short evaluation summaries for representative runs (Table~\ref{tab:rl-eval}). Deploying a trained policy as the primary closed-loop driver on the physical robot---with the same observation latency and actuation path as firmware---was \textbf{out of scope} for verification in this report.
 
-\section{Track III: Preset tripod, IMU, and vision for distance-traveled PPO (planned)}
+\section{Track III: Vision-augmented distance objectives (future)}
 \label{sec:track3}
 
-\textbf{Status: not done.} The goal is to augment the state with \textbf{visual odometry} or pose estimates from an overhead or onboard camera so the agent (or a critic) can optimize \textbf{distance traveled} along a body or world axis with less simulator privilege. Let $p_t\in\mathbb{R}^2$ be horizontal position from integration of visual motion or fiducial tracking, and let $\Delta_t = \|p_t-p_0\|$ or forward displacement $x_t-x_0$. A natural reward increment is
+\textbf{Future work.} Augment $s$ with \textbf{visual odometry} or pose from an overhead or onboard camera so rewards can emphasize \textbf{distance traveled} with less privileged state. Let $p_t\in\mathbb{R}^2$ be horizontal pose from visual integration or fiducials, and consider forward displacement $x_t-x_0$. A natural reward increment is
 \begin{equation}
   r_t = \alpha\,(x_{t+1}-x_t) - \beta\,\|\omega_t\|^2 - \rho\,\mathrm{penalty}_{\mathrm{fall}} - \kappa\,\mathrm{TV}(a)_t,
 \end{equation}
 with IMU rates $\omega_t$ penalizing harsh attitude changes, and optional terms for staying upright. The \textbf{observation} becomes $s_t=[s_t^{\mathrm{IMU/proprio}},\, f_t]$ where $f_t$ is a vector of visual features or estimated pose; PPO then applies the same surrogate~\eqref{eq:ppo-clip} with expanded input dimension.
 
-\textbf{Open problems.} Sim-to-real on vision (latency, calibration, lighting); defining $r_t$ from \emph{estimated} versus ground-truth displacement; and maintaining the preset tripod prior while learning residuals. This track is the logical successor once Track~II policies are stable on Walter with IMU feedback.
+Open challenges include sim-to-real on vision, defining rewards from estimated versus ground-truth motion, and keeping a tripod prior while learning residuals.
 
 \begin{table}[htbp]
   \centering
@@ -204,11 +191,11 @@ with IMU rates $\omega_t$ penalizing harsh attitude changes, and optional terms 
   \label{tab:tracks}
   \begin{tabular}{@{}p{0.14\linewidth}p{0.46\linewidth}p{0.32\linewidth}@{}}
     \toprule
-    Track & Technical core & Status \\
+    Track & Technical core & Outcome in this capstone \\
     \midrule
-    I & Surrogate cost $\mathcal{J}(\boldsymbol{\phi})$ \eqref{eq:surrogate-cost}; L-BFGS-B; JSON$\to$\texttt{.h}$\to$ open-loop firmware & Complete \\
-    II & PPO $\mathcal{L}^{\mathrm{CLIP}}$ \eqref{eq:ppo-clip}; GAE \eqref{eq:gae}; IMU in $s$; tripod prior / structured policy & Near complete (simulation; hardware partial) \\
-    III & Same as II plus visual features or pose $f_t$; rewards from estimated distance / odometry & Not started \\
+    I & Surrogate $\mathcal{J}(\boldsymbol{\phi})$ \eqref{eq:surrogate-cost}; L-BFGS-B; JSON$\to$\texttt{.h}$\to$ open-loop firmware & \textbf{Completed:} optimization exported and flashed path demonstrated \\
+    II & PPO \eqref{eq:ppo-clip}; GAE \eqref{eq:gae}; MuJoCo env; IMU modes in config & \textbf{Completed:} training/eval pipeline and archived runs; hardware policy deployment not fully exercised here \\
+    III & Visual or pose features $f_t$; distance-centric rewards & \textbf{Not started:} specification and literature basis only \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -216,10 +203,10 @@ with IMU rates $\omega_t$ penalizing harsh attitude changes, and optional terms 
 \section{Technical Discussion}
 
 \subsection{Biological and control context}
-The Introduction motivates \emph{Walter} as a layered, bio-inspired architecture; this subsection records additional literature touchpoints used in detailed design. Decentralized feedback atop rhythmic pattern generators remains the standard modeling idiom for insect locomotion~\cite{aydin2023mechanosensory,chen2021adaptive}. Complementary or quaternion attitude filters address accelerometer--gyro fusion when magnetometers are untrustworthy~\cite{valenti2015quaternion,zhang2021attitude}; hexapod posture control on irregular terrain likewise foregrounds body orientation and angular velocity~\cite{bai2019posture}. Disturbance-triggered gait transitions provide a classical benchmark for reflex and supervisory layers~\cite{johnson2010disturbance}.
+Decentralized feedback atop rhythmic coordination remains a standard idiom for insect locomotion~\cite{aydin2023mechanosensory,chen2021adaptive}. Attitude filters for accelerometer--gyro fusion~\cite{valenti2015quaternion,zhang2021attitude} and posture control on terrain~\cite{bai2019posture} inform the IMU observation choices in simulation. Disturbance-triggered transitions~\cite{johnson2010disturbance} motivate reflex layers in the design spec, not a completed hardware demo in this capstone.
 
-\subsection{Layered architecture (specification)}
-The intended runtime stack, documented in \texttt{docs/ARCHITECTURE.md}, uses two timescales. A \textbf{fast tick} ($\sim$10--20\,ms) reads the IMU, fuses attitude, computes a stability score $S$, applies reflex adjustments, steps the gait interpolator, clamps commands, and streams twelve servo setpoints. A \textbf{slow tick} (each gait cycle) aggregates windowed RMS of $S$, runs adaptation, and saves the best parameter vector. The complementary blend
+\subsection{Planned adaptive layer (design specification)}
+Internal architecture notes (\texttt{docs/ARCHITECTURE.md}) describe a \textbf{future} two-timescale stack: a \textbf{fast tick} ($\sim$10--20\,ms) for IMU read, attitude fusion, stability score $S$, reflex adjustments, gait interpolation, and servo commands; and a \textbf{slow tick} (per gait cycle) for windowed costs and optional parameter adaptation. That design informed IMU-inclusive observation modes in simulation; it is \textbf{not} claimed as deployed firmware here. The complementary blend
 \begin{equation}
 \alpha \in (0,1),\quad
 \theta_{\mathrm{roll}} \leftarrow \alpha(\theta_{\mathrm{roll}} + \omega_x \Delta t) + (1-\alpha)\,\theta_{\mathrm{roll,accel}},
@@ -290,13 +277,11 @@ The bill of materials matches purchased components: Teensy-class MCU (SparkFun 1
 Engineering requirements are traced to phase exit criteria in \texttt{docs/PHASES.md} (Phases~1--4: IMU telemetry, reflexes, cautious mode and recovery, online adaptation), supplemented by safety and interface constraints in \texttt{docs/FIRMWARE.md} and the open-loop scope in \texttt{firmware/hexapod\_openloop\_sine/README.md}. \texttt{PHASES.md} serves as the team's consolidated requirements-and-constraints specification for firmware behavior.
 
 \subsection{Summary: met vs.\ not met}
-\textbf{Met (repository evidence):} discrete tripod baseline (\texttt{hexapod\_walking\_v2}); open-loop optimizer and summary JSON/CSV; firmware \texttt{hexapod\_openloop\_sine} with JSON-to-header script; calibration helpers; design, architecture, and firmware documentation; CAD/3D-printed mechanical design for \emph{Walter} documented in this report (Figs.~\ref{fig:walter}--\ref{fig:walter-parts}); MuJoCo/PPO training and evaluation artifacts under \texttt{hexapod\_training\_new/} and \texttt{e90\_repo/}.
-
-\textbf{Partial / not in version control:} Phase~1 IMU telemetry sketch path may be absent as \texttt{hexapod\_imu\_test/}; Phases~2--4 adaptive firmware (\texttt{hexapod\_adaptive/}) not present; full on-device learning as described in \texttt{docs/on\_device\_learning/} remains planning relative to the checked-in firmware tree.
+\textbf{Satisfied in this project:} discrete tripod baseline firmware; open-loop optimization with JSON export and header sync; calibration sketches; CAD-documented mechanical design (Figs.~\ref{fig:walter}--\ref{fig:walter-parts}); a MuJoCo PPO workflow with configs, training scripts, checkpoints, and evaluation writeups. \textbf{Not satisfied against the internal phased firmware spec:} Phases~1--4 adaptive behaviors (telemetry-only through online adaptation) are largely \textbf{not implemented} on the MCU in the snapshot summarized below.
 
 \begin{table}[htbp]
   \centering
-  \caption{Requirement traceability. Evidence points to repository artifacts.}
+  \caption{Requirement traceability (internal \texttt{PHASES.md} vs.\ delivered work).}
   \label{tab:req}
   \begin{tabular}{@{}p{0.06\linewidth}p{0.36\linewidth}p{0.12\linewidth}p{0.38\linewidth}@{}}
     \toprule
@@ -315,7 +300,7 @@ Engineering requirements are traced to phase exit criteria in \texttt{docs/PHASE
 \end{table}
 
 \subsection{Project cost}
-Tables~\ref{tab:cost}--\ref{tab:pcb} summarize \textbf{purchased} electronics (three identical platforms) and \textbf{fabrication} costs for three PCB/stencil orders. Table~\ref{tab:grand} gives the grand total. Servo counts in Table~\ref{tab:cost} are per platform (eight units listed per BOM line); completing twelve DOF per robot may require additional servos beyond those lines if not already stocked.
+Tables~\ref{tab:cost}--\ref{tab:pcb} summarize \textbf{purchased} electronics (three identical platforms) and \textbf{fabrication} costs for three PCB/stencil orders. Table~\ref{tab:grand} states the \textbf{grand total} for those categories only; filament, fasteners, and shop labor are outside the accounting. Servo counts in Table~\ref{tab:cost} are per platform (eight units listed per BOM line); completing twelve DOF per robot may require additional servos beyond those lines if not already stocked.
 
 \begin{table}[htbp]
   \centering
@@ -398,12 +383,13 @@ From \texttt{firmware/hexapod\_openloop\_sine/}, run \texttt{python3 sync\_gait\
 \texttt{firmware/set\_zero/} and side-only test sketches support calibration. The open-loop README documents sign and scale tuning when feet drag or the robot shuffles backward.
 
 \subsection{MuJoCo PPO training and evaluation}
-Training uses \texttt{hexapod\_training\_new/train.py} with YAML configs under \texttt{configs/}; runs write \texttt{training\_summary.yaml}, checkpoints, and logs under \texttt{runs/<run\_name>/}. Evaluation uses \texttt{evaluate.py} with the same config as training; the \texttt{e90\_repo/released\_checkpoints/} tree archives representative \texttt{.zip} weights and \texttt{evaluations/<name>/REPORT.md} summaries for slides and reporting.
+The project produced a \textbf{reusable training workflow}: \texttt{train.py} reads YAML from \texttt{configs/}, writes summaries, checkpoints, and logs under \texttt{runs/<run\_name>/}, and pairs with \texttt{evaluate.py} using the same configuration. Released material includes zipped policies, per-run evaluation folders with \texttt{REPORT.md} summaries, and metadata for reproducibility and reporting.
 
 \section{Results}
+\label{sec:results}
 
 \subsection{Reduced-order optimization (surrogate model)}
-Table~\ref{tab:sim} summarizes \texttt{hexapod\_brain\_roadmap copy/ode\_optimization\_no\_imu/no\_imu\_optimization\_summary.json}. These metrics characterize the \emph{surrogate} model; hardware performance requires bench validation of gains, centers, and directions.
+Table~\ref{tab:sim} summarizes \texttt{hexapod\_brain\_roadmap copy/ode\_optimization\_no\_imu/no\_imu\_optimization\_summary.json}. These numbers describe the \emph{planar surrogate} only; they are not a guarantee of on-robot speed or stability.
 
 \begin{table}[htbp]
   \centering
@@ -427,7 +413,9 @@ Table~\ref{tab:sim} summarizes \texttt{hexapod\_brain\_roadmap copy/ode\_optimiz
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:opt-params} lists the corresponding optimized parameter vector $\boldsymbol{\phi}^\star$ (rest angles, phase shifts, frequency, and swing lift) exported to \texttt{optimized\_gait\_params.h}. Flexion phase shifts sit at the lower bound ($-90^\circ$), trading stride phasing for the surrogate's forward-speed and regularization terms; hardware tuning may move off that bound.
+\textbf{Reading Table~\ref{tab:sim}.} Mean forward speed $\approx 0.23$\,m/s and $\approx 1.9$\,m travel over the surrogate horizon indicate the optimizer found a gait that moves the reduced model forward. Roll RMS near $0.44$\,rad is \textbf{large}: the surrogate tolerates body oscillation in exchange for speed under the chosen weights. Pitch RMS near zero reflects the planar symmetry of the lumped model more than a claim of perfect hardware pitch stability. Peak servo usage and contact-balance spread show the solution stays inside soft actuator and support proxies, but \textbf{contact and torque models are coarse}---hardware will differ once pulses, friction, and foot slip are included.
+
+Table~\ref{tab:opt-params} lists $\boldsymbol{\phi}^\star$ exported to \texttt{optimized\_gait\_params.h}. Flexion phase shifts sit at the lower bound ($-90^\circ$): the optimizer traded stride phasing aggressively for the surrogate objective; bench tuning may move off that bound. Rest angles cluster in physically plausible ranges; frequency near $1.8$\,Hz matches a moderate stride rate for small hexapods in simulation-like settings.
 
 \begin{table}[htbp]
   \centering
@@ -461,6 +449,8 @@ Track~II--III training uses Gymnasium with the MuJoCo asset \texttt{hexapod\_tra
   \label{fig:mujoco}
 \end{figure}
 
+Figure~\ref{fig:mujoco} confirms the asset geometry and contact setup used for learning; it is a passive settle, not evidence of policy quality. Training and evaluation videos for specific checkpoints provide the appropriate visual readout of learned behavior.
+
 \subsection{MuJoCo PPO evaluations (released checkpoints)}
 Table~\ref{tab:rl-eval} quotes short evaluation protocols documented under \url{e90_repo/released_checkpoints/evaluations/}. Rewards are \textbf{not} comparable across configs (different shaping and scaling); forward displacement and path length provide a common physical readout within each experiment family.
 
@@ -482,24 +472,27 @@ Table~\ref{tab:rl-eval} quotes short evaluation protocols documented under \url{
 \end{table}
 \normalsize
 
-The \texttt{pd\_velocity\_window\_run018\_best} checkpoint documents an sCPG + PD + velocity-window experiment; its released short eval shows small net displacement---useful as an archival structured-policy datapoint rather than a primary locomotion benchmark (see that folder's \texttt{REPORT.md}).
+\textbf{Reading Table~\ref{tab:rl-eval}.} The rows are \textbf{not} comparable by raw reward (shaping and scaling differ). Forward displacement and path length are coarse physical readouts: the circle-path MLP run shows modest net forward motion and path length consistent with a curved task; the terrain run averages shorter forward progress when steps and roughness dominate. These figures support the claim that \textbf{policies were trained and evaluated in MuJoCo}, not that a single ``best'' locomotion score was achieved across tasks. Treat simulation displacements as \textbf{indicative}, not predictive of hardware distance without deployment tests.
 
-\subsection{Requirements and cost (results view)}
-Open-loop, hardware documentation, PCB procurement, and simulation requirements (R5--R8) are supported by artifacts. Phase~1--4 adaptive firmware requirements (R1--R4) are \textbf{not} satisfied in the repository snapshot. Purchased engineering spend for this accounting is \textbf{US\$792.67} (Tables~\ref{tab:cost}--\ref{tab:grand}).
+The \texttt{pd\_velocity\_window\_run018\_best} checkpoint is an sCPG + PD + velocity-window experiment with small net displacement in its released short eval---useful as an archival structured-policy datapoint, not a headline locomotion result (see that folder's \texttt{REPORT.md}).
 
 \section{Discussion}
 
-\textbf{Context.} Track~I gives an interpretable, verifiable optimization-to-code pipeline. Track~II applies the PPO mathematics of Sec.~\ref{sec:math-bg} to rich MuJoCo dynamics with IMU-capable observation stacks and tripod-structured policies; Track~III would add visual state for distance-centric rewards but is not yet built. We separate \textbf{simulation} results from \textbf{hardware} validation: closing the loop on II--III requires IMU integration, possible camera/odometry, power-under-load tests, and honest reporting against \texttt{PHASES.md} exit criteria.
+\textbf{What this capstone demonstrates.} The team built a \textbf{named hexapod platform} with documented mechanics, electronics, and cost; implemented an \textbf{optimization-to-firmware} path with reproducible parameters; and ran a \textbf{MuJoCo PPO training and evaluation} workflow with archived checkpoints and configs. Together, that is a credible \textbf{platform-and-methods} outcome: reusable hardware, a defensible open-loop pipeline, and simulation evidence for learned locomotion behaviors under stated rewards.
 
-\textbf{What went well.} A named platform (\emph{Walter}) with traceable CAD and 3D-printed parts; shared command laws between Python and C++; JSON-to-header automation; a stable servo-driver and custom PCB stack; a growing library of RL configs, runs, and released evaluations.
+\textbf{Why full adaptive locomotion is not claimed.} Closing adaptive loops on hardware requires time for IMU bring-up, reflex tuning, safety testing, and power-aware deployment. The phased firmware requirements in \texttt{PHASES.md} were \textbf{not} met in the repository snapshot (Table~\ref{tab:req}); stating that once in requirements and here avoids repeating it in every technical subsection.
 
-\textbf{Limitations.} Model mismatch and servo saturation can invalidate predicted speeds; manual degree-to-pulse scaling; open-loop policies do not reject disturbances. RL rewards are task-specific---cross-comparing raw reward across configs is misleading.
+\textbf{Technical bottlenecks.} Surrogate versus MuJoCo versus hardware disagree on contact, friction, and servo dynamics; manual degree-to-pulse mapping separates optimized angles from reliable motion; open-loop gaits do not reject disturbances. RL rewards are task-specific, so \textbf{cross-comparing raw returns} across YAML files is misleading---compare displacements and behaviors within a task family only, with humility about sim-to-real.
 
-\textbf{Lessons for future E90 students.} Freeze a logging format and baseline gait before adding sensors; budget time for bench tuning after simulation; document PCB spins and BOM multiples early; keep a written trace from optimizer or checkpoint to deployed constants.
+\textbf{Sim claims.} MuJoCo results show that policies \emph{can} be trained and evaluated under the project's models and rewards. They are \textbf{not} automatic predictors of field performance without transfer experiments.
+
+\textbf{Credible next steps.} Harden IMU read paths and logging on the Teensy; pick one PPO checkpoint and measure a short hardware rollout with matched observation rate; then iterate reflexes or residuals before adding vision or distance-only objectives.
+
+\textbf{Advice for future teams.} Lock a baseline gait and logging format before layering sensors; budget bench time after every simulation milestone; track PCB revisions and BOM multiples from week one.
 
 \section{Conclusion}
 
-We presented \emph{Walter} with CAD/PCB/cost documentation; a mathematical treatment of surrogate optimization (L-BFGS-B), MDPs, GAE, and PPO; and \textbf{three tracks}: (1)~optimization-to-code (\emph{complete}); (2)~PPO with IMU and preset tripod structure (\emph{near complete} in sim); (3)~IMU + vision + distance PPO (\emph{planned}). Materials are at \url{https://github.com/HowardWHSrun/WALTER}. Major takeaways: interpretable optimization complements learned policies; IMU and eventually vision shrink the sim-to-real observation gap; requirement tracing must distinguish which track is deployed on hardware.
+This capstone \textbf{established} \emph{Walter}: a twelve-DOF hexapod with CAD/3D-printed structure, custom PCBs, and purchased electronics totaling US\$792.67 in tracked spending. The team \textbf{completed} an open-loop gait optimization loop with deterministic export to firmware, and \textbf{completed} a MuJoCo PPO training and evaluation toolchain with stored checkpoints and representative evaluations. A \textbf{bio-inspired, layered adaptive} control story informed design and simulation choices but was \textbf{not} fully realized on the MCU; that gap is documented in requirements traceability (Table~\ref{tab:req}) rather than hidden. The project provides a \textbf{strong base} for future adaptive and sim-to-real work; code and this report are maintained at \url{https://github.com/HowardWHSrun/WALTER}.
 
 \section*{Acknowledgements}
 We thank our advisor, Allan Moser, for guidance on the project. We thank Swarthmore Engineering and shop or lab staff who supported fabrication and testing. No funding sources beyond the Engineering department are declared for this accounting.
